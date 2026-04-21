@@ -1,9 +1,9 @@
 # Demo Reference Library
 
-- Google Scholar: https://scholar.google.com/citations?user=alex-morgan-demo
-- Morgan, A.; Patel, R.; Lee, S. ``Physics-guided active learning for crystallization pathways.'' \textit{J. Chem. Theory Comput.} (accepted)
-- Morgan, A.; Rivera, D.; Chen, L. ``Closed-loop molecular simulation for self-assembling materials.'' \textit{Chem. Sci.} (advance article)
-- Morgan, A.; Huang, K. ``Experiment-aware coarse-grained models for peptide assembly.'' \textit{Macromolecules} (under revision)
-- Morgan, A.; Zhao, Y. ``Closed-loop simulation and active learning for soft-material discovery.'' \textit{npj Comput. Mater.} (accepted)
-- Morgan, A.; Rivera, D. ``Sequence-aware coarse-grained modeling of disordered protein assembly.'' \textit{Biophys. J.} (accepted)
-- Morgan, A.; Huang, K. ``Experiment-aware generative modeling for protein ensembles.'' \textit{bioRxiv} (preprint)
+- LinkedIn: https://www.linkedin.com/in/taylor-brooks-demo
+- 2025 presidents-club finalist for programs tied to more than \$2.4M in influenced pipeline.
+- Grew MQL-to-SQL conversion by 28\% after rebuilding nurture tracks, routing rules, and follow-up timing.
+- Cut onboarding time-to-value by 22\% through milestone playbooks and success-plan templates.
+- Protected \$1.4M ARR with targeted renewal-save motions and executive recovery cadences.
+- Built a 14-account customer reference bench for sales cycles, analyst calls, and launch campaigns.
+- Reduced first-response time by 31\% after redesigning support routing, macros, and help-center content.

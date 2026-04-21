@@ -31,7 +31,7 @@
 
       <label>
         关键词筛选
-        <input type="text" name="include_keywords" value="{{ include_keywords }}" placeholder="postdoc, materials, chemistry" />
+        <input type="text" name="include_keywords" value="{{ include_keywords }}" placeholder="growth, success, saas" />
       </label>
 
       <label>
@@ -126,9 +126,18 @@
     </div>
 
     <div class="jobs-summary-strip" aria-live="polite">
-      <span class="jobs-summary-pill">剩余 <strong>{{ jobs_counts.remaining_count }}</strong></span>
-      <span class="jobs-summary-pill">已投递 <strong>{{ jobs_counts.applied_count }}</strong></span>
-      <span class="jobs-summary-pill">已查阅 <strong>{{ jobs_counts.reviewed_count }}</strong></span>
+      <span class="jobs-summary-pill">
+        <span class="jobs-summary-label" data-i18n-text="剩余">剩余</span>
+        <strong>{{ jobs_counts.remaining_count }}</strong>
+      </span>
+      <span class="jobs-summary-pill">
+        <span class="jobs-summary-label" data-i18n-text="已投递">已投递</span>
+        <strong>{{ jobs_counts.applied_count }}</strong>
+      </span>
+      <span class="jobs-summary-pill">
+        <span class="jobs-summary-label" data-i18n-text="已查阅">已查阅</span>
+        <strong>{{ jobs_counts.reviewed_count }}</strong>
+      </span>
     </div>
 
     {% if jobs_view %}

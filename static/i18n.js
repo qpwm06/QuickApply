@@ -165,6 +165,9 @@
     { zh: "当前筛选条件下还没有职位。可以回到 Crawler 增加关键词或刷新一次。", en: "No jobs match the current filters. Go back to Crawler to add keywords or refresh." },
     { zh: "全部", en: "All" },
     { zh: "最近刷新", en: "Recently Refreshed" },
+    { zh: "最高", en: "Best" },
+    { zh: "供给", en: "Supply" },
+    { zh: "画像供给权重", en: "Market priority" },
     { zh: "匹配分", en: "Match Score" },
     { zh: "最近 24 小时", en: "Last 24 Hours" },
     { zh: "追踪概览", en: "Tracking Overview" },
@@ -172,6 +175,9 @@
     { zh: "回到 Jobs", en: "Back to Jobs" },
     { zh: "回到爬虫中心", en: "Back to Crawler Center" },
     { zh: "当前筛选", en: "Active Filter" },
+    { zh: "剩余", en: "Remaining" },
+    { zh: "已投递", en: "Applied" },
+    { zh: "已查阅", en: "Reviewed" },
     { zh: "手工新增", en: "Manual Add" },
     { zh: "没有抓到的岗位，也可以先录入这里继续跟踪", en: "Jobs that were not crawled can still be tracked here." },
     { zh: "职位名称", en: "Job Title" },
@@ -256,9 +262,11 @@
     { zh: "手工加入需要屏蔽的公司", en: "Add a company to exclude manually" },
     { zh: "LinkedIn / Indeed / 内推公司", en: "LinkedIn / Indeed / referral company" },
     { zh: "比如：内推人、当前状态、面试安排、需要补充的材料", en: "Example: referrer, current stage, interview schedule, materials to prepare" },
+    { zh: "例如：约到 phone screen / 推荐人已介绍 / 面试失败原因", en: "Example: phone screen booked / referral intro completed / interview feedback" },
     { zh: "职位或公司", en: "Job title or company" },
     { zh: "可留空，自动根据名称生成", en: "Optional. Auto-generate from the name if left empty." },
-    { zh: "新增搜索关键词，例如 \"scientific machine learning\" molecules", en: "Add a search keyword, for example \"scientific machine learning\" molecules" },
+    { zh: "例如 \"growth marketing manager\" saas | \"customer success manager\" b2b", en: "e.g. \"growth marketing manager\" saas | \"customer success manager\" b2b" },
+    { zh: "新增搜索关键词，例如 \"growth marketing manager\" saas", en: "Add a search keyword, for example \"growth marketing manager\" saas" },
     { zh: "删除关键词", en: "Delete keyword" },
   ];
 
@@ -502,6 +510,8 @@
     ".table-header span",
     ".table-sort-link",
     ".jobs-summary-pill",
+    ".jobs-summary-label",
+    ".term-chip-launch",
     ".row-inline-button",
     ".ghost-link",
     ".primary-link",
@@ -734,6 +744,43 @@
     }
   }
 
+  function applyDataTranslations(root, language) {
+    for (const element of root.querySelectorAll("[data-i18n-text]")) {
+      if (!(element instanceof Element) || shouldSkipElement(element)) {
+        continue;
+      }
+      const baselineText = element.getAttribute("data-i18n-text") || "";
+      const translated = translateTextValue(baselineText, language);
+      if (translated !== element.textContent) {
+        element.textContent = translated;
+      }
+    }
+
+    for (const element of root.querySelectorAll("[data-i18n-placeholder]")) {
+      if (!(element instanceof Element)) {
+        continue;
+      }
+      const baselineValue = element.getAttribute("data-i18n-placeholder") || "";
+      element.setAttribute("placeholder", translateAttributeValue(baselineValue, language));
+    }
+
+    for (const element of root.querySelectorAll("[data-i18n-title]")) {
+      if (!(element instanceof Element)) {
+        continue;
+      }
+      const baselineValue = element.getAttribute("data-i18n-title") || "";
+      element.setAttribute("title", translateAttributeValue(baselineValue, language));
+    }
+
+    for (const element of root.querySelectorAll("[data-i18n-aria-label]")) {
+      if (!(element instanceof Element)) {
+        continue;
+      }
+      const baselineValue = element.getAttribute("data-i18n-aria-label") || "";
+      element.setAttribute("aria-label", translateAttributeValue(baselineValue, language));
+    }
+  }
+
   function syncLanguageSwitch(root, language) {
     for (const button of root.querySelectorAll("[data-language-option]")) {
       if (!(button instanceof HTMLButtonElement)) continue;
@@ -752,6 +799,8 @@
         applyTextTranslation(element, language);
       }
     }
+
+    applyDataTranslations(root, language);
 
     for (const label of root.querySelectorAll("label")) {
       applyLabelTranslation(label, language);

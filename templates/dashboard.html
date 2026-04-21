@@ -41,11 +41,15 @@
           <span class="mini-badge">{{ item.job_count }}</span>
         </div>
         <p class="mini-surface-text">
-          最高 {{ "%.1f"|format(item.best_score) }}
-          {% if item.last_refresh %}
-          · {{ item.last_refresh|localtime("%m-%d %H:%M") }}
-          {% endif %}
+          <span data-i18n-text="最高">最高</span>
+          {{ "%.1f"|format(item.best_score) }}
         </p>
+        {% if item.last_refresh %}
+        <p class="row-subtitle">
+          <span data-i18n-text="最近刷新">最近刷新</span>
+          {{ item.last_refresh|localtime("%m-%d %H:%M") }}
+        </p>
+        {% endif %}
       </article>
       {% endfor %}
     </div>

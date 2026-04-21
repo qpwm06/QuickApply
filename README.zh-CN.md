@@ -1,98 +1,100 @@
 # QuickApply
 
-[English README / 英文说明](README.md)
+<p align="center">
+  <a href="./README.md">English</a> |
+  <a href="./README.zh-CN.md">简体中文</a>
+</p>
 
-QuickApply 是一个本地优先的职位监控网站。它由
-[JobSpy](https://github.com/Bunsly/JobSpy) 驱动抓取，由 Codex 完成实现，UI 风格参考了 sub2api。
+QuickApply 是一个本地优先的职位运营面板。
 
-## 功能概览
+- 抓取底座： [JobSpy](https://github.com/Bunsly/JobSpy)
+- 实现：Codex
+- UI 参考：sub2api
 
-- 基于简历画像，对 LinkedIn、Indeed、ZipRecruiter 做本地职位抓取。
-- 在网页里集中做评分、筛选、追踪和抓取历史查看。
-- 保留 Tailor/Codex 精修流：生成修改建议、维护同一 Session、把结构化指令发给 Codex 修改最终简历。
-- 仓库自带 synthetic example resumes 和示例资料库，可安全公开分享。
+公开仓库里默认放的是一套完全虚构的 B2B SaaS demo persona，因此可以安全分享：
+`Taylor Brooks`，一个面向增长营销、客户成功、支持运营和 Revenue Programs 的商业岗位候选人。
 
-## 重要说明
+## 这个仓库解决什么问题
 
-- 项目抓取底座就是 JobSpy；面对 LinkedIn 和 Indeed 这类站点时，仍然可能遇到 429 或反爬限制。
-- 开源版保留 Tailor 功能，但真正执行 Codex Session 仍然需要你本地自己安装并登录 `codex` CLI。
-- Docker 负责跑 Web 应用和 LaTeX 编译环境，不会自动带上你的 Codex 认证。
+QuickApply 对应的是一条很明确的使用链路：
 
-## 目录结构
+1. 放入一份或多份 LaTeX 简历
+2. 配置和市场方向匹配的搜索画像
+3. 用 JobSpy 在本地抓职位
+4. 在网页里做筛选、排除、投递追踪
+5. 针对具体岗位进入 Tailor，并把结构化指令送进同一个 Codex session
 
-```text
-app/                     Flask 主应用、抓取、评分、存储、Tailor 服务
-config/                  搜索画像和运行配置
-examples/                示例简历、项目库、参考文献库
-static/                  样式和 i18n
-templates/               页面模板
-tests/                   路由和评分测试
-.codex/skills/           公开版 Tailor skills
-scripts/                 本地启动与 Docker 启动脚本
-data/                    SQLite 数据和 Tailor 工作区
-```
+## 页面截图
 
-## 本地启动
+这些截图都来自演示数据 seed 后的真实页面。
+
+![Dashboard](docs/screenshots/dashboard-en.png)
+![Crawler](docs/screenshots/crawler-en.png)
+![Jobs](docs/screenshots/jobs-en.png)
+![Tracker](docs/screenshots/tracker-en.png)
+
+## 快速启动
+
+### 本地
 
 ```bash
 uv sync --dev
+uv run python scripts/seed_demo_data.py --replace
 uv run python main.py
 ```
 
-默认地址：
+打开：
 
 - `http://127.0.0.1:5273/dashboard`
 
-也可以直接用脚本：
-
-```bash
-bash scripts/dev.sh
-```
-
-## Docker 快速部署
+### Docker
 
 ```bash
 docker compose up -d --build
+docker compose run --rm quickapply uv run python scripts/seed_demo_data.py --replace
 ```
 
-启动后打开：
+打开：
 
 - `http://127.0.0.1:5273/dashboard`
 
-`docker-compose.yml` 默认会把运行数据持久化到 `./data`，并把 `./config` 挂载进容器，方便你直接改搜索画像。
+## Documentation
 
-## 环境变量
+建议从这里开始看：
 
-- `QUICKAPPLY_CONFIG_PATH`
-- `QUICKAPPLY_DATABASE_URL`
-- `QUICKAPPLY_WORKSPACES_DIR`
-- `QUICKAPPLY_PROXY_FILE`
-- `QUICKAPPLY_CODEX_TIMEOUT_SECONDS`
-- `PORT`
-- `HOST`
+- [文档首页](docs/README.zh-CN.md)
+- [快速开始](docs/getting-started.zh-CN.md)
+- [配置说明](docs/configuration.zh-CN.md)
+- [抓取与投递流程](docs/workflows.zh-CN.md)
+- [Tailor 精修说明](docs/tailor.zh-CN.md)
+- [部署与运维](docs/deployment.zh-CN.md)
 
-如果你要给 JobSpy 配代理，可以把 `config/proxies.example.txt` 复制成 `config/proxies.local.txt` 后填入代理。
+英文文档：
 
-## Tailor 流程
+- [Documentation Home](docs/README.md)
+- [Quick Start Guide](docs/getting-started.md)
+- [Configuration Guide](docs/configuration.md)
+- [Crawler, Jobs, and Tracker Workflow](docs/workflows.md)
+- [Tailor Workflow](docs/tailor.md)
+- [Deployment and Operations](docs/deployment.md)
 
-Tailor 页面默认保留单 Session 工作流：
+## 仓库结构
 
-1. 保存岗位工作区输入。
-2. 生成修改建议。
-3. 审阅或编辑 `session_instruction.md`。
-4. 发给同一个 Codex Session 修改最终 LaTeX 简历。
-5. 在页面中查看重新编译后的 PDF。
-
-如果本机没有安装或登录 `codex`，Tailor 页面仍然能打开，但执行 Session 动作时会失败，直到你完成本地配置。
+```text
+app/                     Flask 主应用、JobSpy 抓取、评分、存储、Tailor 服务
+config/                  搜索画像和运行配置
+data/                    SQLite 数据库和工作区
+docs/                    公开文档和截图
+examples/                synthetic resumes、项目库、证明材料库、模板简历
+scripts/                 启动脚本和 demo seed 脚本
+static/                  样式和 i18n
+templates/               Jinja 页面模板
+tests/                   路由、配置、评分、Tailor 测试
+.codex/skills/           公开 Tailor skills
+```
 
 ## 测试
 
 ```bash
-uv run pytest
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run python -m pytest -q
 ```
-
-## 致谢
-
-- 抓取底座：JobSpy
-- 实现：Codex
-- UI 参考：sub2api

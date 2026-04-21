@@ -173,6 +173,9 @@ def test_i18n_script_covers_remaining_ui_shell_fragments() -> None:
     assert '".mini-surface strong"' in script_text
     assert '".muted-copy"' in script_text
     assert '".timeline-fallback-copy"' in script_text
+    assert '".jobs-summary-label"' in script_text
+    assert '".term-chip-launch"' in script_text
+    assert "data-i18n-text" in script_text
     assert "translateScoringFormula" in script_text
     assert "最高 ([\\d.]+)" in script_text
     assert "最佳 ([\\d.]+)" in script_text
@@ -220,7 +223,7 @@ def test_tailor_skill_detail_page_renders_codex_skill(tmp_path, monkeypatch) -> 
     assert "修改建议 Skill" in html
     assert "渲染预览" in html
     assert "原始文本" in html
-    assert "Google Scholar" in html
+    assert "Selected Wins" in html
     assert "打开 Finder 文件" in html
 
 
@@ -521,9 +524,11 @@ def test_jobs_page_renders_keyword_filters_counts_and_sort_urls(tmp_path, monkey
     assert "Research Intern" not in html
     assert 'name="include_keywords" value="postdoc"' in html
     assert 'name="exclude_keywords" value="intern"' in html
-    assert "剩余 <strong>2</strong>" in html
-    assert "已投递 <strong>1</strong>" in html
-    assert "已查阅 <strong>2</strong>" in html
+    assert 'data-i18n-text="剩余">剩余</span>' in html
+    assert 'data-i18n-text="已投递">已投递</span>' in html
+    assert 'data-i18n-text="已查阅">已查阅</span>' in html
+    assert "<strong>2</strong>" in html
+    assert "<strong>1</strong>" in html
     assert "include_keywords=postdoc" in html
     assert "exclude_keywords=intern" in html
     assert 'const jobsKeywordStorageKey = "quickapply:jobs-keyword-filters";' in html

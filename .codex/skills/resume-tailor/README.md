@@ -30,12 +30,12 @@
 - `role.md`
 - `user_notes.md`
 - 基础简历 / cv_template.tex
-- `asset/ProjectLibrary/projects.md`
-- `asset/Reference/reference.md`
+- `examples/library/projects.md`
+- `examples/library/reference.md`
 
 ## 统一约束
 
-- 不允许虚构项目、论文、数据、技术栈、时间线
+- 不允许虚构项目、案例、业绩、数据、技术栈、时间线
 - 每一步 final message 控制在 1-2 句简体中文
 - 只允许在当前 `Role` 工作区内写文件
 - 不要修改项目内 `.codex` 或 legacy `.claude` 文件

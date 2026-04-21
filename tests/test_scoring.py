@@ -20,20 +20,20 @@ def test_resume_profile_loads_resume_sources() -> None:
 
     assert profile.source_files
     assert len(profile.source_files) >= 4
-    assert any(path.endswith("alex_morgan_general.tex") for path in profile.source_files)
-    assert any(path.endswith("alex_morgan_comp_chem.tex") for path in profile.source_files)
-    assert "molecular dynamics" in profile.resume_text.lower()
+    assert any(path.endswith("taylor_brooks_general.tex") for path in profile.source_files)
+    assert any(path.endswith("taylor_brooks_growth_marketing.tex") for path in profile.source_files)
+    assert "customer success" in profile.resume_text.lower()
 
 
-def test_score_job_prefers_targeted_scientific_ml_role() -> None:
+def test_score_job_prefers_targeted_growth_role() -> None:
     settings = load_settings()
     profile = build_resume_profile(settings.resume_profile)
 
     good_job = FetchedJob(
         unique_key="good",
-        search_term='"scientific machine learning"',
+        search_term='"growth marketing manager" saas',
         source_site="indeed",
-        title="Scientific ML Scientist",
+        title="Growth Marketing Manager",
         company="Example Labs",
         location_text="Remote",
         city="",
@@ -47,16 +47,16 @@ def test_score_job_prefers_targeted_scientific_ml_role() -> None:
         max_amount=180000.0,
         is_remote=True,
         description=(
-            "Build machine learning potentials and molecular modeling workflows "
-            "with PyTorch, LAMMPS, PLUMED, and Bayesian optimization."
+            "Own growth marketing, demand generation, lifecycle automation, "
+            "HubSpot, Salesforce, conversion reporting, and pipeline generation."
         ),
         date_posted=None,
     )
     bad_job = FetchedJob(
         unique_key="bad",
-        search_term='"scientific machine learning"',
+        search_term='"growth marketing manager" saas',
         source_site="indeed",
-        title="Sales Account Executive",
+        title="Research Scientist",
         company="Example Labs",
         location_text="Remote",
         city="",
@@ -69,7 +69,7 @@ def test_score_job_prefers_targeted_scientific_ml_role() -> None:
         min_amount=120000.0,
         max_amount=140000.0,
         is_remote=True,
-        description="Own pipeline generation, sales outreach, and quota management.",
+        description="Run molecular simulation workflows, protein modeling, and wet-lab assay analysis.",
         date_posted=None,
     )
 
@@ -94,9 +94,9 @@ def test_score_job_respects_market_supply_hint() -> None:
     profile = build_resume_profile(settings.resume_profile)
     job = FetchedJob(
         unique_key="market-hint",
-        search_term='"computational chemist"',
+        search_term='"customer success manager" saas',
         source_site="linkedin",
-        title="Computational Chemist",
+        title="Customer Success Manager",
         company="Example Labs",
         location_text="Chicago, IL",
         city="Chicago",
@@ -109,21 +109,21 @@ def test_score_job_respects_market_supply_hint() -> None:
         min_amount=150000.0,
         max_amount=180000.0,
         is_remote=False,
-        description="Computational chemistry, molecular modeling, enhanced sampling, and PyTorch.",
+        description="Customer onboarding, renewals, success plans, expansion, QBRs, and customer health reviews.",
         date_posted=None,
     )
     high_supply = SearchProfileConfig(
-        slug="comp-chem",
-        label="Computational Chemistry",
-        search_terms=['"computational chemist"'],
-        search_term_weights={'"computational chemist"': 1.0},
+        slug="customer-success",
+        label="Customer Success + Expansion",
+        search_terms=['"customer success manager" saas'],
+        search_term_weights={'"customer success manager" saas': 1.0},
         market_priority=0.92,
     )
     low_supply = SearchProfileConfig(
-        slug="protein-ml",
-        label="Protein Modeling",
-        search_terms=['"computational chemist"'],
-        search_term_weights={'"computational chemist"': 0.45},
+        slug="support-ops",
+        label="Customer Support + CX Ops",
+        search_terms=['"customer success manager" saas'],
+        search_term_weights={'"customer success manager" saas': 0.45},
         market_priority=0.45,
     )
 

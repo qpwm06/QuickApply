@@ -8,199 +8,158 @@ app:
   workspaces_dir: data/workspaces
   codex_timeout_seconds: 1200
 resume_profile:
-  name: Alex Morgan
-  summary: Simulation-first computational scientist bridging molecular simulation,
-    computational chemistry, materials informatics, and scientific machine learning
-    for molecules, soft materials, and biomolecular systems.
+  name: Taylor Brooks
+  summary: Revenue-minded go-to-market operator spanning growth marketing, lifecycle
+    automation, customer success, support operations, and account expansion for B2B SaaS teams.
   source_files:
-  - examples/resumes/alex_morgan_general.tex
-  - examples/resumes/alex_morgan_comp_chem.tex
-  - examples/resumes/alex_morgan_materials_ml.tex
-  - examples/resumes/alex_morgan_protein_ml.tex
+  - examples/resumes/taylor_brooks_general.tex
+  - examples/resumes/taylor_brooks_growth_marketing.tex
+  - examples/resumes/taylor_brooks_customer_success.tex
+  - examples/resumes/taylor_brooks_account_management.tex
   target_titles:
-  - Computational Scientist
-  - Computational Chemist
-  - Molecular Modeling Scientist
-  - Computational Chemistry Scientist
-  - Computational Materials Scientist
-  - Research Scientist, Computational Chemistry
-  - Scientific ML Scientist
-  - Computational Biologist
-  # 新增职位名称变体
-  - Simulation Scientist
-  - Molecular Simulation Scientist
-  - Research Scientist, Molecular Simulation
-  - Computational Researcher
-  - Senior Scientist, Computational Chemistry
-  - Staff Scientist, Computational Chemistry
-  - Scientist, Molecular Design
-  - Materials Informatics Scientist
+  - Growth Marketing Manager
+  - Lifecycle Marketing Manager
+  - Demand Generation Manager
+  - Performance Marketing Manager
+  - Customer Success Manager
+  - Senior Customer Success Manager
+  - Account Executive
+  - Account Manager
+  - Revenue Operations Manager
+  - Customer Support Manager
+  - Customer Experience Manager
+  - Client Services Manager
   focus_domains:
-  - molecular simulation
-  - molecular modeling
-  - computational chemistry
-  - small-molecule crystallization
-  - scientific machine learning
-  - computational materials
-  - soft matter simulation
-  - protein modeling
-  - biomolecular condensates
-  # 新增细分领域
-  - materials informatics
-  - drug discovery
-  - force field development
-  - free energy calculations
-  - crystal engineering
-  - polymer simulation
-  - nanoparticle self-assembly
-  weighted_keywords:
-    # 核心差异化 — molecular simulation + computational chemistry
-    molecular dynamics: 1.8
-    computational chemistry: 1.7
-    molecular modeling: 1.6
-    force field development: 1.6
-    coarse-grained: 1.5
-    enhanced sampling: 1.5
-    free energy: 1.5
-    crystallization: 1.4
-    computational scientist: 1.3
-    # 工具差异化 — 改过源码或深度使用的
-    LAMMPS: 1.4
-    HOOMD: 1.4
-    PLUMED: 1.3
-    CP2K: 1.2
-    ORCA: 1.2
-    DFT: 1.2
-    # ML 相关 — 有实力但非核心差异化
-    machine learning potentials: 1.3
-    scientific machine learning: 1.2
-    protein modeling: 1.2
-    graph neural networks: 1.1
-    PyTorch: 1.0
-    # 新增高信号词
-    metadynamics: 1.3
-    nucleation: 1.2
-    crystal growth: 1.2
-    soft matter: 1.2
-    cheminformatics: 1.1
-    Bayesian optimization: 1.0
-    Chemprop: 1.0
-  stop_keywords:
-  - sales
-  - account executive
-  - recruiter
-  - director of business development
-  # 新增过滤词
-  - marketing manager
+  - growth marketing
+  - demand generation
+  - lifecycle marketing
+  - b2b saas
   - customer success
-  - business analyst
-  - financial analyst
-  - clinical research
-  - regulatory affairs
-  - quality assurance
-  - manufacturing engineer
+  - onboarding
+  - renewal management
+  - account expansion
+  - support operations
+  - revenue operations
+  weighted_keywords:
+    growth marketing: 1.7
+    demand generation: 1.7
+    lifecycle marketing: 1.6
+    customer success: 1.6
+    onboarding: 1.5
+    renewals: 1.5
+    expansion: 1.4
+    pipeline: 1.4
+    HubSpot: 1.3
+    Salesforce: 1.3
+    account management: 1.2
+    revenue operations: 1.2
+    customer education: 1.1
+    support operations: 1.1
+    case studies: 1.0
+    retention: 1.0
+    SQL: 1.0
+    ABM: 1.0
+  stop_keywords:
+  - postdoc
+  - professor
+  - research scientist
+  - computational chemistry
+  - molecular simulation
+  - bench scientist
+  - lab manager
+  - biophysics
 search_profiles:
-# -- Scientific ML 方向 --
-- slug: scientific-ml
-  label: Simulation Science + Scientific ML
+- slug: growth-marketing
+  label: Growth Marketing + Demand Gen
   enabled: true
-  default_resume_file: examples/resumes/alex_morgan_materials_ml.tex
+  default_resume_file: examples/resumes/taylor_brooks_growth_marketing.tex
   search_terms:
-  - '"computational scientist" molecular simulation'
-  - '"machine learning" molecular modeling'
-  - '"scientific machine learning" materials'
-  - '"simulation scientist" machine learning'
-  - '"molecular dynamics" simulation scientist'
+  - '"growth marketing manager" saas'
+  - '"demand generation manager"'
+  - '"lifecycle marketing manager"'
+  - '"performance marketing manager" b2b'
   search_term_weights:
-    '"computational scientist" molecular simulation': 0.85
-    '"machine learning" molecular modeling': 0.82
-    '"scientific machine learning" materials': 0.58
-    '"simulation scientist" machine learning': 0.64
-    '"molecular dynamics" simulation scientist': 0.88
+    '"growth marketing manager" saas': 1.0
+    '"demand generation manager"': 0.94
+    '"lifecycle marketing manager"': 0.91
+    '"performance marketing manager" b2b': 0.84
   locations:
   - United States
   sites:
-  - indeed
   - linkedin
-  - zip_recruiter
-  results_wanted: 25
-  hours_old: 168
-  country_indeed: USA
-  market_priority: 0.72
-# -- Computational Chemistry 方向 (核心) --
-- slug: comp-chem
-  label: Computational Chemistry + Molecular Modeling
-  enabled: true
-  default_resume_file: examples/resumes/alex_morgan_comp_chem.tex
-  search_terms:
-  - '"computational chemist"'
-  - '"computational chemistry"'
-  - '"molecular modeling scientist"'
-  - '"computational scientist" chemistry'
-  - '"cheminformatics" computational chemistry'
-  search_term_weights:
-    '"computational chemist"': 1.0
-    '"computational chemistry"': 0.98
-    '"molecular modeling scientist"': 0.92
-    '"computational scientist" chemistry': 0.84
-    '"cheminformatics" computational chemistry': 0.78
-  locations:
-  - United States
-  sites:
   - indeed
-  - linkedin
   - zip_recruiter
   results_wanted: 25
   hours_old: 168
   country_indeed: USA
   market_priority: 0.92
-# -- Protein / Computational Biology 方向 --
-- slug: protein-ml
-  label: Protein Modeling + Computational Biology
+- slug: customer-success
+  label: Customer Success + Expansion
   enabled: true
-  default_resume_file: examples/resumes/alex_morgan_protein_ml.tex
+  default_resume_file: examples/resumes/taylor_brooks_customer_success.tex
   search_terms:
-  - '"computational biologist"'
-  - '"protein modeling"'
-  - '"computational protein design"'
-  - '"protein design scientist"'
+  - '"customer success manager" saas'
+  - '"senior customer success manager"'
+  - '"client success manager"'
+  - '"account manager" saas'
   search_term_weights:
-    '"computational biologist"': 0.62
-    '"protein modeling"': 0.55
-    '"computational protein design"': 0.48
-    '"protein design scientist"': 0.45
+    '"customer success manager" saas': 1.0
+    '"senior customer success manager"': 0.96
+    '"client success manager"': 0.84
+    '"account manager" saas': 0.78
   locations:
   - United States
   sites:
-  - indeed
   - linkedin
-  results_wanted: 20
-  hours_old: 168
-  country_indeed: USA
-  market_priority: 0.60
-# -- Pharma Computational Chemistry 方向 --
-- slug: pharma-comp-chem
-  label: Pharmaceutical Computational Chemistry
-  enabled: true
-  default_resume_file: examples/resumes/alex_morgan_general.tex
-  search_terms:
-  - '"computational chemistry" pharmaceutical'
-  - '"molecular modeling" drug discovery'
-  - '"force field" drug design'
-  - '"free energy perturbation"'
-  - '"computational scientist" pharma'
-  search_term_weights:
-    '"computational chemistry" pharmaceutical': 0.92
-    '"molecular modeling" drug discovery': 0.88
-    '"force field" drug design': 0.80
-    '"free energy perturbation"': 0.75
-    '"computational scientist" pharma': 0.85
-  locations:
-  - United States
-  sites:
   - indeed
-  - linkedin
   results_wanted: 25
   hours_old: 168
   country_indeed: USA
-  market_priority: 0.85
+  market_priority: 0.88
+- slug: sales-growth
+  label: Sales + Account Growth
+  enabled: true
+  default_resume_file: examples/resumes/taylor_brooks_account_management.tex
+  search_terms:
+  - '"account executive" saas'
+  - '"account manager" software'
+  - '"business development manager" software'
+  - '"sales enablement manager"'
+  search_term_weights:
+    '"account executive" saas': 1.0
+    '"account manager" software': 0.91
+    '"business development manager" software': 0.78
+    '"sales enablement manager"': 0.72
+  locations:
+  - United States
+  sites:
+  - linkedin
+  - indeed
+  - zip_recruiter
+  results_wanted: 20
+  hours_old: 168
+  country_indeed: USA
+  market_priority: 0.84
+- slug: support-ops
+  label: Customer Support + CX Ops
+  enabled: true
+  default_resume_file: examples/resumes/taylor_brooks_general.tex
+  search_terms:
+  - '"customer support manager"'
+  - '"customer experience manager" b2b'
+  - '"support operations manager"'
+  - '"implementation manager" saas'
+  search_term_weights:
+    '"customer support manager"': 1.0
+    '"customer experience manager" b2b': 0.86
+    '"support operations manager"': 0.82
+    '"implementation manager" saas': 0.74
+  locations:
+  - United States
+  sites:
+  - linkedin
+  - indeed
+  results_wanted: 25
+  hours_old: 168
+  country_indeed: USA
+  market_priority: 0.74

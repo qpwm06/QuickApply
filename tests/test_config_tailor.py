@@ -189,18 +189,18 @@ def test_tailor_service_creates_and_updates_workspace(tmp_path) -> None:
     job = JobRecord(
         id=321,
         unique_key="job-321",
-        profile_slug="scientific-ml",
-        profile_label="Scientific ML + Molecular Modeling",
-        search_term='"scientific machine learning"',
+        profile_slug="growth-marketing",
+        profile_label="Growth Marketing + Demand Gen",
+        search_term='"growth marketing manager" saas',
         source_site="linkedin",
-        title="Scientific ML Scientist",
+        title="Growth Marketing Manager",
         company="Example Labs",
         location_text="Chicago, IL",
         city="Chicago",
         state="IL",
         country="USA",
         job_url="https://example.com/jobs/321",
-        description="Work on molecular simulation and machine learning potentials.",
+        description="Own lifecycle automation, paid programs, and pipeline reporting for a SaaS team.",
     )
 
     workspace = service.ensure_workspace(job)
@@ -212,7 +212,7 @@ def test_tailor_service_creates_and_updates_workspace(tmp_path) -> None:
     assert workspace.base_resume_copy_path.exists()
     assert workspace.base_resume_copy_path.name == "cv_template.tex"
     assert workspace.pipeline_state_path.exists()
-    assert workspace.base_resume_path.endswith("alex_morgan_materials_ml.tex")
+    assert workspace.base_resume_path.endswith("taylor_brooks_growth_marketing.tex")
     assert workspace.revision_advice_path.name == "resume_revision_advice.md"
     assert workspace.session_instruction_path.name == "session_instruction.md"
     assert workspace.matching_analysis_path.name == "matching_analysis.json"
@@ -222,12 +222,12 @@ def test_tailor_service_creates_and_updates_workspace(tmp_path) -> None:
     assert workspace.diff_path.name == "diff.tex"
     assert workspace.diff_pdf_path.name == "diff.pdf"
     assert workspace.vibe_review_path.name == "vibe_review.md"
-    assert "Scientific ML Scientist" in workspace.role_markdown
+    assert "Growth Marketing Manager" in workspace.role_markdown
 
-    updated_role = "# Tailor focus\n\n- Keep simulation-first framing."
-    updated_notes = "# User Notes\n\n- Stress protein + materials bridge."
-    updated_resume = "examples/resumes/alex_morgan_comp_chem.tex"
-    updated_instruction = "请把 summary 收窄到 simulation-first。"
+    updated_role = "# Tailor focus\n\n- Lead with lifecycle automation and pipeline outcomes."
+    updated_notes = "# User Notes\n\n- Stress customer stories, renewal proof, and dashboard ownership."
+    updated_resume = "examples/resumes/taylor_brooks_customer_success.tex"
+    updated_instruction = "请把 summary 收窄到 revenue-minded GTM operator。"
     updated = service.save_workspace(
         job,
         base_resume_path=updated_resume,
@@ -268,18 +268,18 @@ def test_tailor_service_session_prompt_uses_role_md_not_snapshot(tmp_path) -> No
     job = JobRecord(
         id=323,
         unique_key="job-323",
-        profile_slug="comp-chem",
-        profile_label="Computational Chemistry + Molecular Modeling",
-        search_term='"computational chemist"',
+        profile_slug="customer-success",
+        profile_label="Customer Success + Expansion",
+        search_term='"customer success manager" saas',
         source_site="linkedin",
-        title="Computational Chemist",
+        title="Customer Success Manager",
         company="Example Labs",
         location_text="Chicago, IL",
         city="Chicago",
         state="IL",
         country="USA",
         job_url="https://example.com/jobs/323",
-        description="Computational chemistry role.",
+        description="Customer success role with onboarding, renewal health, and expansion planning.",
     )
     workspace = service.ensure_workspace(job)
 
@@ -288,7 +288,7 @@ def test_tailor_service_session_prompt_uses_role_md_not_snapshot(tmp_path) -> No
         workspace,
         (
             "## 修改目标\n"
-            "- 收窄 summary，前置小分子结晶项目。\n\n"
+            "- 收窄 summary，前置 onboarding 与 renewal outcomes。\n\n"
             "## 必做项\n"
             "- 保持 LaTeX 可编译。\n"
         ),
@@ -312,14 +312,14 @@ def test_tailor_service_session_prompt_uses_role_md_not_snapshot(tmp_path) -> No
     assert "这是当前已建立 Codex session 的后续回合" in revision_prompt
     assert "可选基础模板" not in revision_prompt
     assert "# 发给 Codex Session 的指令" in revision_prompt
-    assert "Google Scholar 链接" in revision_prompt
+    assert "当前主链接" in revision_prompt
     assert "underline 强调点" in revision_prompt
     assert "只写 `resume_revision_advice.md`" in revision_prompt
     assert "不允许修改 .codex、.claude" in prompt
     assert "role-project-matcher.md" not in prompt
     assert "role-project-matcher.md" not in revision_prompt
     assert "这一步不读取外部 skill 文件，而是使用内置的固定规则来建立或恢复同一个 Codex session" in service._build_session_start_prompt(job, workspace)  # noqa: SLF001
-    assert "J. Chem. Theory Comput." in revision_prompt or "npj Comput. Mater." in revision_prompt
+    assert "Built a 14-account customer reference bench" in revision_prompt
 
 
 def test_revision_advice_prefers_final_resume_when_available(tmp_path) -> None:
@@ -331,25 +331,25 @@ def test_revision_advice_prefers_final_resume_when_available(tmp_path) -> None:
     job = JobRecord(
         id=324,
         unique_key="job-324",
-        profile_slug="comp-chem",
-        profile_label="Computational Chemistry + Molecular Modeling",
-        search_term='"computational chemist"',
+        profile_slug="customer-success",
+        profile_label="Customer Success + Expansion",
+        search_term='"customer success manager" saas',
         source_site="linkedin",
-        title="Computational Chemist",
+        title="Customer Success Manager",
         company="Example Labs",
         location_text="Chicago, IL",
         city="Chicago",
         state="IL",
         country="USA",
         job_url="https://example.com/jobs/324",
-        description="Computational chemistry role.",
+        description="Customer success role with onboarding and renewals.",
     )
     workspace = service.ensure_workspace(job)
     workspace.final_resume_path.write_text(
         (
-            "\\section*{Selected Publications}\n"
-            "\\item J. Chem. Theory Comput. (accepted).\n"
-            "\\item Google Scholar: https://scholar.google.com/citations?user=final-version\n"
+            "https://www.linkedin.com/in/final-version\n"
+            "\\section*{Selected Wins}\n"
+            "\\item Recovered $1.2M ARR through renewal planning.\n"
             "\\underline{Final-version emphasis}\n"
         ),
         encoding="utf-8",
@@ -359,7 +359,8 @@ def test_revision_advice_prefers_final_resume_when_available(tmp_path) -> None:
 
     assert str(workspace.final_resume_path) in revision_prompt
     assert "当前简历来源: final tex" in revision_prompt
-    assert "https://scholar.google.com/citations?user=final-version" in revision_prompt
+    assert "https://www.linkedin.com/in/final-version" in revision_prompt
+    assert "Recovered $1.2M ARR through renewal planning." in revision_prompt
     assert "Final-version emphasis" in revision_prompt
 
 

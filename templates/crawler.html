@@ -96,7 +96,7 @@
         <div class="profile-create-grid">
           <label>
             名称
-            <input type="text" name="label" placeholder="Protein ML / Quant / Bio AI" required />
+            <input type="text" name="label" placeholder="Growth Marketing / Customer Success / Revenue Ops" required />
           </label>
 
           <label>
@@ -106,19 +106,24 @@
 
           <label>
             初始关键词
-            <input type="text" name="search_terms" placeholder='例如 "protein modeling" machine learning | "computational biology"' />
+            <input
+              type="text"
+              name="search_terms"
+              data-i18n-placeholder='例如 "growth marketing manager" saas | "customer success manager" b2b'
+              placeholder='例如 "growth marketing manager" saas | "customer success manager" b2b'
+            />
           </label>
 
           <label>
             地点
-            <input type="text" name="locations" value="United States" placeholder="United States | Chicago, IL | Beijing" />
+            <input type="text" name="locations" value="United States" placeholder="United States | Chicago, IL | Remote" />
           </label>
         </div>
 
         <div class="profile-create-grid profile-create-grid-bottom">
           <label>
             默认简历
-            <input type="text" name="default_resume_file" value="{{ default_profile_resume }}" placeholder="examples/resumes/alex_morgan_general.tex" />
+            <input type="text" name="default_resume_file" value="{{ default_profile_resume }}" placeholder="examples/resumes/taylor_brooks_general.tex" />
           </label>
 
           <fieldset class="toolbar-fieldset profile-sites-fieldset">
@@ -179,7 +184,10 @@
                 class="term-chip-link"
               >
                 <span>{{ term }}</span>
-                <span class="term-chip-launch">供给 {{ "%.2f"|format((item.term_weights[loop.index0].weight if loop.index0 < item.term_weights|length else 1.0)) }}</span>
+                <span class="term-chip-launch">
+                  <span data-i18n-text="供给">供给</span>
+                  {{ "%.2f"|format((item.term_weights[loop.index0].weight if loop.index0 < item.term_weights|length else 1.0)) }}
+                </span>
               </a>
               <form method="post" action="{{ url_for('delete_profile_term', profile_slug=item.profile.slug) }}" class="term-chip-delete-form" data-native-scroll-restore>
                 <input type="hidden" name="redirect_to" value="crawler" />
@@ -197,7 +205,8 @@
             <input
               type="text"
               name="search_term"
-              placeholder="新增搜索关键词，例如 &quot;scientific machine learning&quot; molecules"
+              data-i18n-placeholder="新增搜索关键词，例如 &quot;growth marketing manager&quot; saas"
+              placeholder="新增搜索关键词，例如 &quot;growth marketing manager&quot; saas"
             />
             <button type="submit" class="ghost-button">添加关键词</button>
           </form>
@@ -208,7 +217,7 @@
               type="text"
               name="locations"
               value="{{ item.profile.locations|join(' | ') }}"
-              placeholder="United States | Chicago, IL | Beijing"
+              placeholder="United States | Chicago, IL | Remote"
             />
             <button type="submit" class="ghost-button">保存地点</button>
           </form>
@@ -218,7 +227,10 @@
           <div class="mini-surface">
             <span class="mini-surface-label">市场层级</span>
             <strong>{{ item.market_tier }}</strong>
-            <p class="mini-surface-text">画像供给权重 {{ "%.2f"|format(item.market_priority) }}</p>
+            <p class="mini-surface-text">
+              <span data-i18n-text="画像供给权重">画像供给权重</span>
+              {{ "%.2f"|format(item.market_priority) }}
+            </p>
           </div>
           <div class="mini-surface">
             <span class="mini-surface-label">默认简历</span>

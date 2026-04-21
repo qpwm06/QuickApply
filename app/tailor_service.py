@@ -81,10 +81,10 @@ EMBEDDED_SHARED_SKILL_TEXT = """
 - 复用同一个 Codex session，不要把每次修改拆成新的会话。
 - role.md 是岗位主输入；job_snapshot.json 只留档，不是主要推理来源。
 - 事实来源只允许：role.md、user_notes.md、基础简历、projects.md、reference.md。
-- 不允许虚构项目经历、论文状态、结果数字、职责边界或岗位要求。
+- 不允许虚构项目经历、业绩数字、职责边界或岗位要求。
 - 优先做删减、压缩、前置和重排，尽量保留原简历结构，方便用户继续手改。
 - 当前已有的 \\underline{} 只能分析是否合理，不能自动扩写或引入新的未经证实强调点。
-- 涉及 publications / references 时，必须显式核对 Google Scholar、Selected Publications 和 reference.md 的最新状态。
+- 涉及 selected wins / references / links 时，必须显式核对当前主链接、Selected Wins 区块和 reference.md 的最新状态。
 - 如果用户意图与事实来源冲突，以事实来源为准，并在输出中保守处理。
 - 最终输出要短、可执行、可编译，避免宏观空话和重复分析。
 - 简历正文（tex 文件中的可见内容）必须全部用英文撰写，中文只用于 final message 和 Markdown 工作文件。
@@ -119,7 +119,7 @@ EMBEDDED_STEP_RULE_TEXTS = {
 """.strip(),
     "fact_check": """
 本步骤只做事实核验。
-- 逐条检查项目、论文状态、数字、职责边界和关键词映射。
+- 逐条检查项目、业绩数字、职责边界和关键词映射。
 - 发现问题时给出来源真相与可执行修复建议。
 - 不直接修改 tex，避免把判断和改写混在一起。
 """.strip(),
@@ -127,7 +127,7 @@ EMBEDDED_STEP_RULE_TEXTS = {
 本步骤只产出最终 tex。
 - 吸收前面已经确认的问题修复，不再做大范围岗位分析。
 - 优先保证事实一致、结构稳定、LaTeX 可编译。
-- references / publications 可以保守修正，但不要虚构状态。
+- references / selected wins / links 可以保守修正，但不要虚构状态。
 """.strip(),
     "vibe_review": """
 本步骤做最终整体润色。
@@ -366,8 +366,8 @@ def split_revision_advice(markdown_text: str) -> tuple[str, str]:
     return summary_text.strip(), session_instruction_text.strip()
 
 
-def _extract_google_scholar_url(template_text: str) -> str:
-    matched = re.search(r"https://scholar\.google\.com/[^\s}]+", template_text)
+def _extract_primary_profile_link(template_text: str) -> str:
+    matched = re.search(r"https://[^\s}]+", template_text)
     return matched.group(0) if matched else ""
 
 
@@ -383,40 +383,42 @@ def _extract_underlined_phrases(template_text: str, *, limit: int = 12) -> list[
     return phrases
 
 
-def _extract_publication_lines(template_text: str, *, limit: int = 6) -> list[str]:
+def _extract_resume_highlight_lines(template_text: str, *, limit: int = 6) -> list[str]:
     lines = template_text.splitlines()
-    in_publication_block = False
-    publication_lines: list[str] = []
+    in_highlight_block = False
+    highlight_lines: list[str] = []
+    supported_headings = (
+        "Selected Wins",
+        "Selected Highlights",
+        "Selected Results",
+    )
     for raw_line in lines:
         line = raw_line.strip()
-        if not in_publication_block and "Selected Publications" in line:
-            in_publication_block = True
+        if not in_highlight_block and any(heading in line for heading in supported_headings):
+            in_highlight_block = True
             continue
-        if not in_publication_block:
+        if not in_highlight_block:
             continue
-        if line.startswith(r"\section*") and "Selected Publications" not in line:
+        if line.startswith(r"\section*") and not any(heading in line for heading in supported_headings):
             break
         if line.startswith(r"\subsection*"):
             break
         if line.startswith(r"\item "):
-            publication_lines.append(line[6:].strip())
-            if len(publication_lines) >= limit:
+            highlight_lines.append(line[6:].strip())
+            if len(highlight_lines) >= limit:
                 break
-    return publication_lines
+    return highlight_lines
 
 
-def _extract_reference_status_lines(reference_text: str, *, limit: int = 8) -> list[str]:
-    status_keywords = ("accepted", "under review", "under revision", "biorxiv", "advance article")
+def _extract_reference_proof_lines(reference_text: str, *, limit: int = 8) -> list[str]:
     lines: list[str] = []
     for raw_line in reference_text.splitlines():
         normalized = raw_line.strip()
-        if not normalized:
+        if not normalized or not normalized.startswith("- "):
             continue
-        lowered = normalized.lower()
-        if any(keyword in lowered for keyword in status_keywords):
-            lines.append(normalized)
-            if len(lines) >= limit:
-                break
+        lines.append(normalized)
+        if len(lines) >= limit:
+            break
     return lines
 
 
@@ -484,16 +486,16 @@ class TailorService:
     def _build_revision_signal_block(self, workspace: TailorWorkspace) -> str:
         source_path, resume_text, uses_final_resume = self.revision_resume_source(workspace)
         reference_text = _read_text(REFERENCE_LIBRARY_PATH)
-        scholar_url = _extract_google_scholar_url(resume_text)
+        primary_link = _extract_primary_profile_link(resume_text)
         underlined_phrases = _extract_underlined_phrases(resume_text)
-        publication_lines = _extract_publication_lines(resume_text)
-        reference_status_lines = _extract_reference_status_lines(reference_text)
+        highlight_lines = _extract_resume_highlight_lines(resume_text)
+        reference_proof_lines = _extract_reference_proof_lines(reference_text)
 
         lines = [
-            "当前简历与文献信号:",
+            "当前简历与证明材料信号:",
             f"- 当前简历来源: {'final tex' if uses_final_resume else '模板副本回退'}",
             f"- 当前读取文件: {source_path}",
-            f"- Google Scholar 链接: {scholar_url or '未发现'}",
+            f"- 当前主链接: {primary_link or '未发现'}",
             "- 当前简历里已有的 underline 强调点:",
         ]
         if underlined_phrases:
@@ -501,15 +503,15 @@ class TailorService:
         else:
             lines.append("  - 未发现")
 
-        lines.append("- 当前简历里 Selected Publications 区块:")
-        if publication_lines:
-            lines.extend(f"  - {line}" for line in publication_lines)
+        lines.append("- 当前简历里 Selected Wins / Highlights 区块:")
+        if highlight_lines:
+            lines.extend(f"  - {line}" for line in highlight_lines)
         else:
             lines.append("  - 未发现")
 
-        lines.append("- reference.md 中带状态的最新条目:")
-        if reference_status_lines:
-            lines.extend(f"  - {line}" for line in reference_status_lines)
+        lines.append("- reference.md 中可复用的证明材料:")
+        if reference_proof_lines:
+            lines.extend(f"  - {line}" for line in reference_proof_lines)
         else:
             lines.append("  - 未发现")
 
@@ -1148,7 +1150,7 @@ class TailorService:
             "硬约束:\n"
             "1. 不要修改输入文件本身。\n"
             "2. 只写输出文件。\n"
-            "3. 不要虚构任何岗位事实、项目事实或论文状态。\n"
+            "3. 不要虚构任何岗位事实、项目事实或业绩状态。\n"
             "4. final message 只用 1-2 句中文总结这次 agent 结果。\n"
         )
         return self._build_common_prompt(
@@ -2303,7 +2305,7 @@ class TailorService:
             "2. 项目组合建议必须明确写出 2-4 个最值得保留或组合的项目故事线。\n"
             "3. 模板建议必须点名一个最推荐模板，并说明为什么它比当前模板更合适。\n"
             "4. 第一轮 vibe 提示请直接写成可以复制给 Codex session 的中文指令。\n"
-            "5. 不要虚构任何项目、成果或文献。\n"
+            "5. 不要虚构任何项目、成果或证明材料。\n"
             "6. final message 只用 1-2 句中文总结推荐策略。\n"
         )
         return self._build_common_prompt(
@@ -2339,10 +2341,10 @@ class TailorService:
             f" `# {SESSION_INSTRUCTION_SECTION_HEADING}`。\n"
             "2. 第一部分面向用户，控制在 5 个二级小节以内，聚焦当前简历该删什么、该缩什么、该前置什么、该如何组合项目故事线。\n"
             "3. 第一部分必须单独包含“当前强调点调整建议”，明确说明模板里已有 underline 强调点哪些该保留、哪些该替换、哪些过度强调。\n"
-            "4. 第一部分必须单独包含 Publications / References 的更新提醒，显式核对 Google Scholar 链接、Selected Publications 区块以及 reference.md 里的最新状态，尤其是 Accepted / preprint 条目。\n"
+            "4. 第一部分必须单独包含 Proof / References 的更新提醒，显式核对当前主链接、Selected Wins / Highlights 区块以及 reference.md 里的证明材料。\n"
             "5. 第二部分是发给同一个 Codex session 的结构化 Markdown 指令，必须包含二级标题：`## 修改目标`、`## 必做项`、`## 事实核对`、`## 禁止项`、`## 完成定义`。\n"
             "6. 不要重复输出宏观岗位分析，不要复述 role.md，不要列出所有模板备选。\n"
-            "7. 不要虚构任何项目、成果、论文状态或岗位要求。\n"
+            "7. 不要虚构任何项目、成果、业绩数字或岗位要求。\n"
             "8. final message 只用 1-2 句中文总结这份岗位最该怎么改。\n"
         )
         return self._build_skill_prompt(
@@ -2398,7 +2400,7 @@ class TailorService:
             f"用户本轮 Markdown 指令:\n{instruction_text.strip()}\n\n"
             "额外要求:\n"
             "1. 只修改最终 tex，不要改 role.md、advice、JSON 报告或其他目录。\n"
-            "2. 可以调整 bullet、summary、publication/reference、顺序和措辞，但不能新增未证实事实。\n"
+            "2. 可以调整 bullet、summary、selected wins/reference/link、顺序和措辞，但不能新增未证实事实。\n"
             "3. 保持 LaTeX 可编译。\n"
             "4. final message 只总结这一轮修改的重点。\n"
         )
@@ -2563,7 +2565,7 @@ class TailorService:
             f"输出文件:\n- {workspace.final_resume_path}\n\n"
             "额外要求:\n"
             "1. 需要吸收 fact_check_report.json 的修复建议。\n"
-            "2. 可以调整 references/publications，便于用户在 final proof 后继续微调文献。\n"
+            "2. 可以调整 selected wins、references 和链接，便于用户在 final proof 后继续微调证明材料。\n"
             "3. 不要生成 PDF；PDF 由本地服务负责编译。\n"
             "4. final message 只总结最终 tex 的重点变化。\n"
         )
@@ -2595,9 +2597,9 @@ class TailorService:
             "步骤 3：不要在改 tex 的同时回头修改 vibe_review.md 来与改动对齐。\n\n"
             "额外要求:\n"
             "1. vibe review 不是某一步局部微调，而是对整份 CV 的整体不足做 review。\n"
-            "2. 可以指出并修正事实错误、proofreader 问题、文献问题或整体叙事问题。\n"
+            "2. 可以指出并修正事实错误、proofreader 问题、证明材料问题或整体叙事问题。\n"
             "3. 如果某处看起来更强但事实依据不足，宁可不改。\n"
-            "4. final message 只总结整体改进方向和是否修改了 references。\n"
+            "4. final message 只总结整体改进方向和是否修改了 selected wins / references。\n"
         )
         return self._build_common_prompt(
             title=TAILOR_STEP_LABELS["vibe_review"],
