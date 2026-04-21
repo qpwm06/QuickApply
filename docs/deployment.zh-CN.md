@@ -2,6 +2,8 @@
 
 [English](./deployment.md)
 
+> 导航：[← Tailor 精修说明](./tailor.zh-CN.md) · [文档首页](./README.zh-CN.md) · [下一篇：文档首页 →](./README.zh-CN.md)
+
 ## 本地辅助脚本
 
 QuickApply 自带：
@@ -77,3 +79,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run python -m pytest -q
 - 挂载进去的 `./data`
 - 挂载进去的 `./config`
 - 容器环境变量
+
+---
+
+> 继续阅读：[← Tailor 精修说明](./tailor.zh-CN.md) · [文档首页](./README.zh-CN.md) · [下一篇：文档首页 →](./README.zh-CN.md)

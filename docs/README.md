@@ -2,6 +2,8 @@
 
 [简体中文](./README.zh-CN.md)
 
+> Navigation: [← Repository README](../README.md) · [Next: Quick Start Guide →](./getting-started.md)
+
 > 🧭 Read this folder like a product manual: start the app, understand the workflow, then go deeper into Tailor and deployment details.
 
 ## 🚀 Recommended Reading Order
@@ -95,3 +97,7 @@ The public screenshots are organized around the real operations loop, not around
 - Docker notes
 - tests
 - operational caveats
+
+---
+
+> Continue: [← Repository README](../README.md) · [Next: Quick Start Guide →](./getting-started.md)

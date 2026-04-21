@@ -2,6 +2,8 @@
 
 [English](./tailor.md)
 
+> 导航：[← 抓取与投递流程](./workflows.zh-CN.md) · [文档首页](./README.zh-CN.md) · [下一篇：部署与运维 →](./deployment.zh-CN.md)
+
 ## Tailor 是什么
 
 Tailor 是针对单个岗位的简历工作区。
@@ -65,3 +67,7 @@ Tailor 的核心不是只改 `.tex`，而是看最终 PDF。
 - Tailor 仍然依赖你本机已经安装并登录 `codex`
 - Docker 镜像不会带上你的 Codex 登录状态
 - 公开仓库里的简历和 proof points 都是 synthetic 数据
+
+---
+
+> 继续阅读：[← 抓取与投递流程](./workflows.zh-CN.md) · [文档首页](./README.zh-CN.md) · [下一篇：部署与运维 →](./deployment.zh-CN.md)

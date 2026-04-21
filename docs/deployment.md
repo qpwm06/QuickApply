@@ -2,6 +2,8 @@
 
 [简体中文](./deployment.zh-CN.md)
 
+> Navigation: [← Tailor Workflow](./tailor.md) · [Documentation Home](./README.md) · [Next: Documentation Home →](./README.md)
+
 ## Local Helpers
 
 QuickApply includes:
@@ -77,3 +79,7 @@ Check:
 - mounted `./data`
 - mounted `./config`
 - container environment variables
+
+---
+
+> Continue: [← Tailor Workflow](./tailor.md) · [Documentation Home](./README.md) · [Next: Documentation Home →](./README.md)

@@ -2,6 +2,8 @@
 
 [简体中文](./tailor.zh-CN.md)
 
+> Navigation: [← Workflow Tour](./workflows.md) · [Documentation Home](./README.md) · [Next: Deployment and Operations →](./deployment.md)
+
 ## What Tailor Is
 
 Tailor is the job-specific resume workspace.
@@ -65,3 +67,7 @@ That makes it easier to iterate visually after each revision round.
 - Tailor still requires your own local `codex` CLI
 - Docker does not ship with your Codex authentication
 - the public repo uses synthetic resumes and synthetic proof points
+
+---
+
+> Continue: [← Workflow Tour](./workflows.md) · [Documentation Home](./README.md) · [Next: Deployment and Operations →](./deployment.md)

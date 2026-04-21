@@ -2,6 +2,8 @@
 
 [English](./configuration.md)
 
+> 导航：[← 快速开始](./getting-started.zh-CN.md) · [文档首页](./README.zh-CN.md) · [下一篇：抓取与投递流程 →](./workflows.zh-CN.md)
+
 ## 主配置文件
 
 - `config/search_profiles.yaml`
@@ -79,3 +81,7 @@ QuickApply 默认把运行时数据放在：
 - `data/workspaces/`
 
 这些路径同时适合本地运行和 Docker bind mount。
+
+---
+
+> 继续阅读：[← 快速开始](./getting-started.zh-CN.md) · [文档首页](./README.zh-CN.md) · [下一篇：抓取与投递流程 →](./workflows.zh-CN.md)

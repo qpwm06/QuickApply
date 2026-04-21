@@ -2,6 +2,8 @@
 
 [简体中文](./getting-started.zh-CN.md)
 
+> Navigation: [← Documentation Home](./README.md) · [Next: Configuration Guide →](./configuration.md)
+
 ## 1. Install Dependencies
 
 ### Local
@@ -85,3 +87,7 @@ To use your own:
 - [Configuration Guide](./configuration.md)
 - [Crawler, Jobs, and Tracker Workflow](./workflows.md)
 - [Tailor Workflow](./tailor.md)
+
+---
+
+> Continue: [← Documentation Home](./README.md) · [Next: Configuration Guide →](./configuration.md)

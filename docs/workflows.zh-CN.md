@@ -2,6 +2,8 @@
 
 [English](./workflows.md)
 
+> 导航：[← 配置说明](./configuration.zh-CN.md) · [文档首页](./README.zh-CN.md) · [下一篇：Tailor 精修说明 →](./tailor.zh-CN.md)
+
 > 🧭 QuickApply 最适合被当成一条运营链路来用：先看总览，再调市场画像，再筛职位池，接着管投递状态，最后只对真正重要的岗位进入 Tailor。
 
 ## 🖼️ 工作流总览
@@ -151,3 +153,7 @@
 4. 只对真正重要的岗位进入 `Tailor` 做定制化简历
 
 Tailor 的部分继续看 [tailor.zh-CN.md](./tailor.zh-CN.md)。
+
+---
+
+> 继续阅读：[← 配置说明](./configuration.zh-CN.md) · [文档首页](./README.zh-CN.md) · [下一篇：Tailor 精修说明 →](./tailor.zh-CN.md)

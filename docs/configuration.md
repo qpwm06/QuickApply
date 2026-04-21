@@ -2,6 +2,8 @@
 
 [简体中文](./configuration.zh-CN.md)
 
+> Navigation: [← Quick Start Guide](./getting-started.md) · [Documentation Home](./README.md) · [Next: Workflow Tour →](./workflows.md)
+
 ## Main Config File
 
 - `config/search_profiles.yaml`
@@ -79,3 +81,7 @@ By default QuickApply stores runtime data in:
 - `data/workspaces/`
 
 Those paths are suitable for both local runs and Docker bind mounts.
+
+---
+
+> Continue: [← Quick Start Guide](./getting-started.md) · [Documentation Home](./README.md) · [Next: Workflow Tour →](./workflows.md)

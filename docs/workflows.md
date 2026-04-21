@@ -2,6 +2,8 @@
 
 [简体中文](./workflows.zh-CN.md)
 
+> Navigation: [← Configuration Guide](./configuration.md) · [Documentation Home](./README.md) · [Next: Tailor Workflow →](./tailor.md)
+
 > 🧭 QuickApply works best as one operations loop: check the board, refresh the market, filter the pool, track real applications, then move into Tailor only for the roles that matter.
 
 ## 🖼️ Workflow Overview
@@ -151,3 +153,7 @@ The loop usually ends like this:
 4. open `Tailor` only for a serious role that deserves a customized resume
 
 For the tailoring side, continue in [tailor.md](./tailor.md).
+
+---
+
+> Continue: [← Configuration Guide](./configuration.md) · [Documentation Home](./README.md) · [Next: Tailor Workflow →](./tailor.md)

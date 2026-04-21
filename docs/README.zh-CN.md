@@ -2,6 +2,8 @@
 
 [English](./README.md)
 
+> 导航：[← 仓库首页 README](../README.zh-CN.md) · [下一篇：快速开始 →](./getting-started.zh-CN.md)
+
 > 🧭 这套文档建议按“产品说明书”的方式来看：先启动，再理解工作流，最后再进 Tailor 和部署细节。
 
 ## 🚀 建议阅读顺序
@@ -95,3 +97,7 @@
 - Docker 注意事项
 - 测试命令
 - 运维边界
+
+---
+
+> 继续阅读：[← 仓库首页 README](../README.zh-CN.md) · [下一篇：快速开始 →](./getting-started.zh-CN.md)

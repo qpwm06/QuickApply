@@ -2,6 +2,8 @@
 
 [English](./getting-started.md)
 
+> 导航：[← 文档首页](./README.zh-CN.md) · [下一篇：配置说明 →](./configuration.zh-CN.md)
+
 ## 1. 安装依赖
 
 ### 本地
@@ -85,3 +87,7 @@ bash scripts/dev.sh
 - [配置说明](./configuration.zh-CN.md)
 - [抓取与投递流程](./workflows.zh-CN.md)
 - [Tailor 精修说明](./tailor.zh-CN.md)
+
+---
+
+> 继续阅读：[← 文档首页](./README.zh-CN.md) · [下一篇：配置说明 →](./configuration.zh-CN.md)
