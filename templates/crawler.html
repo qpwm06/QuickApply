@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section" id="crawler-status">
+  <div class="section-card hero-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">运行状态</p>
+        <h3>这里集中管理抓取控制、自动刷新和当前来源</h3>
+      </div>
+      <form method="post" action="{{ url_for('refresh_jobs') }}" class="inline-form" data-native-scroll-restore>
+        <input type="hidden" name="redirect_to" value="crawler" />
+        <select name="profile_slug">
+          <option value="all">全部画像</option>
+          {% for profile in profiles %}
+          <option value="{{ profile.slug }}">{{ profile.label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="primary-button" {% if refresh_state.running %}disabled{% endif %}>
+          {% if refresh_state.running %}抓取中{% else %}立即抓取{% endif %}
+        </button>
+      </form>
+    </div>
+
+    <div class="stat-grid crawler-status-grid">
+      <article class="stat-card">
+        <span class="stat-label">当前状态</span>
+        <strong>{% if refresh_state.running %}运行中{% else %}待机{% endif %}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">自动刷新</span>
+        <strong>
+          {% if next_run %}
+          {{ next_run|localtime("%m-%d %H:%M") }}
+          {% else %}
+          未启动
+          {% endif %}
+        </strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">职位总数</span>
+        <strong>{{ overview.total_jobs }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">高分职位</span>
+        <strong>{{ overview.strong_matches }}</strong>
+      </article>
+    </div>
+
+    <div class="wide-note" id="refresh-banner">
+      {% if refresh_state.running %}
+      正在抓取 {{ refresh_state.profile_label }}，开始于
+      {{ refresh_state.started_at|localtime("%Y-%m-%d %H:%M:%S %Z") if refresh_state.started_at else "未知时间" }}。
+      {% elif refresh_state.last_result %}
+      {{ refresh_state.last_result }}
+      {% else %}
+      当前没有后台抓取任务。
+      {% endif %}
+    </div>
+
+    <div class="meta-pills-wrap">
+      {% for item in source_site_overview %}
+      <a
+        class="meta-pill"
+        href="{{ source_site_home_url(item.source_site) or url_for('jobs_page') }}"
+        {% if source_site_home_url(item.source_site) %}target="_blank" rel="noreferrer"{% endif %}
+      >
+        {{ item.source_site|replace("_", " ")|title }} · {{ item.job_count }}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="crawler-profiles">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">搜索画像</p>
+        <h3>在这里维护关键词、站点、默认简历和当前画像命中情况</h3>
+      </div>
+      <span class="header-badge">打分公式：{{ scoring_model.formula }}</span>
+    </div>
+
+    <div class="mini-surface profile-create-panel">
+      <div class="section-card-header profile-create-header">
+        <div>
+          <p class="section-kicker">新增画像</p>
+          <h3>先加一个画像，再继续补关键词和刷新</h3>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('create_profile') }}" class="editor-form" data-native-scroll-restore>
+        <input type="hidden" name="redirect_to" value="crawler" />
+
+        <div class="profile-create-grid">
+          <label>
+            名称
+            <input type="text" name="label" placeholder="Protein ML / Quant / Bio AI" required />
+          </label>
+
+          <label>
+            Slug
+            <input type="text" name="slug" placeholder="可留空，自动根据名称生成" />
+          </label>
+
+          <label>
+            初始关键词
+            <input type="text" name="search_terms" placeholder='例如 "protein modeling" machine learning | "computational biology"' />
+          </label>
+
+          <label>
+            地点
+            <input type="text" name="locations" value="United States" placeholder="United States | Chicago, IL | Beijing" />
+          </label>
+        </div>
+
+        <div class="profile-create-grid profile-create-grid-bottom">
+          <label>
+            默认简历
+            <input type="text" name="default_resume_file" value="{{ default_profile_resume }}" placeholder="examples/resumes/alex_morgan_general.tex" />
+          </label>
+
+          <fieldset class="toolbar-fieldset profile-sites-fieldset">
+            <legend>抓取站点</legend>
+            <div class="country-options">
+              {% for site in site_options %}
+              <label class="checkbox-pill">
+                <input type="checkbox" name="sites" value="{{ site }}" {% if site in ["linkedin", "indeed"] %}checked{% endif %} />
+                <span>{{ site|replace("_", " ")|title }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-button">新增画像</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="profile-admin-list">
+      {% for item in profiles_view %}
+      <article class="profile-admin-row">
+        <div class="profile-admin-main">
+          <div class="profile-admin-head">
+            <div>
+              <h4>{{ item.profile.label }}</h4>
+              <p class="row-subtitle">
+                {{ item.job_count }} 个职位 · 最佳 {{ "%.1f"|format(item.best_score) }}
+                {% if item.last_refresh %}
+                · 最近刷新 {{ item.last_refresh|localtime("%m-%d %H:%M %Z") }}
+                {% endif %}
+                · {{ item.market_tier }}
+              </p>
+            </div>
+
+            <div class="profile-admin-actions">
+              <form method="post" action="{{ url_for('refresh_jobs') }}" class="inline-form" data-native-scroll-restore>
+                <input type="hidden" name="redirect_to" value="crawler" />
+                <input type="hidden" name="profile_slug" value="{{ item.profile.slug }}" />
+                <button type="submit" class="ghost-button" {% if refresh_state.running %}disabled{% endif %}>刷新该画像</button>
+              </form>
+              <form method="post" action="{{ url_for('delete_profile', profile_slug=item.profile.slug) }}" class="inline-form" data-native-scroll-restore>
+                <input type="hidden" name="redirect_to" value="crawler" />
+                <button type="submit" class="ghost-button">删除画像</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="term-list">
+            {% for term in item.profile.search_terms %}
+            <div class="term-chip">
+              <a
+                href="{{ linkedin_jobs_search_url(term, item.linkedin_location) }}"
+                target="_blank"
+                rel="noreferrer"
+                class="term-chip-link"
+              >
+                <span>{{ term }}</span>
+                <span class="term-chip-launch">供给 {{ "%.2f"|format((item.term_weights[loop.index0].weight if loop.index0 < item.term_weights|length else 1.0)) }}</span>
+              </a>
+              <form method="post" action="{{ url_for('delete_profile_term', profile_slug=item.profile.slug) }}" class="term-chip-delete-form" data-native-scroll-restore>
+                <input type="hidden" name="redirect_to" value="crawler" />
+                <input type="hidden" name="search_term" value="{{ term }}" />
+                <button type="submit" aria-label="删除关键词">×</button>
+              </form>
+            </div>
+            {% else %}
+            <div class="empty-state compact-empty-state">当前还没有关键词。</div>
+            {% endfor %}
+          </div>
+
+          <form method="post" action="{{ url_for('add_profile_term', profile_slug=item.profile.slug) }}" class="add-term-form" data-native-scroll-restore>
+            <input type="hidden" name="redirect_to" value="crawler" />
+            <input
+              type="text"
+              name="search_term"
+              placeholder="新增搜索关键词，例如 &quot;scientific machine learning&quot; molecules"
+            />
+            <button type="submit" class="ghost-button">添加关键词</button>
+          </form>
+
+          <form method="post" action="{{ url_for('update_profile_locations', profile_slug=item.profile.slug) }}" class="add-term-form" data-native-scroll-restore>
+            <input type="hidden" name="redirect_to" value="crawler" />
+            <input
+              type="text"
+              name="locations"
+              value="{{ item.profile.locations|join(' | ') }}"
+              placeholder="United States | Chicago, IL | Beijing"
+            />
+            <button type="submit" class="ghost-button">保存地点</button>
+          </form>
+        </div>
+
+        <div class="profile-admin-side">
+          <div class="mini-surface">
+            <span class="mini-surface-label">市场层级</span>
+            <strong>{{ item.market_tier }}</strong>
+            <p class="mini-surface-text">画像供给权重 {{ "%.2f"|format(item.market_priority) }}</p>
+          </div>
+          <div class="mini-surface">
+            <span class="mini-surface-label">默认简历</span>
+            <strong>{{ item.profile.default_resume_file.split("/")[-1] if item.profile.default_resume_file else "未设置" }}</strong>
+          </div>
+          <div class="mini-surface">
+            <span class="mini-surface-label">搜索地点</span>
+            <div class="meta-pills-wrap">
+              {% for location in item.profile.locations %}
+              <span class="meta-pill small-pill">{{ location }}</span>
+              {% else %}
+              <span class="row-subtitle">未设置</span>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="mini-surface">
+            <span class="mini-surface-label">抓取站点</span>
+            <div class="meta-pills-wrap">
+              {% for site in item.profile.sites %}
+              <a
+                class="meta-pill small-pill"
+                href="{{ source_site_home_url(site) or url_for('jobs_page') }}"
+                {% if source_site_home_url(site) %}target="_blank" rel="noreferrer"{% endif %}
+              >
+                {{ site|replace("_", " ")|title }}
+              </a>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="crawler-history">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">抓取记录</p>
+        <h3>快速看每次抓取的产出和异常</h3>
+      </div>
+    </div>
+
+    <div class="table-shell">
+      <div class="table-header crawler-history-grid">
+        <span>画像</span>
+        <span>开始时间</span>
+        <span>结束时间</span>
+        <span>抓到</span>
+        <span>保存</span>
+        <span>状态</span>
+        <span>详情</span>
+      </div>
+      {% for item in refresh_runs %}
+      {% set run = item.run %}
+      <article class="table-row crawler-history-grid">
+        <span>{{ run.profile_label }}</span>
+        <span>{{ run.started_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
+        <span>{{ run.finished_at|localtime("%Y-%m-%d %H:%M %Z") if run.finished_at else "进行中" }}</span>
+        <span>{{ run.jobs_seen }}</span>
+        <span>{{ run.jobs_saved }}</span>
+        <span class="{% if run.success %}run-ok{% else %}run-warn{% endif %}">
+          {% if run.success %}成功{% else %}失败{% endif %}
+        </span>
+        <span>
+          <a href="{{ url_for('crawler_run_detail', run_id=run.id) }}" class="ghost-link">查看详情</a>
+        </span>
+      </article>
+      {% else %}
+      <div class="empty-state">还没有抓取记录。</div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{% if refresh_state.running %}
+<script>
+  (() => {
+    const banner = document.getElementById("refresh-banner");
+    let finished = false;
+
+    async function pollRefreshState() {
+      if (finished) return;
+      try {
+        const response = await fetch("/api/refresh-status", { headers: { "Accept": "application/json" } });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.running) {
+          const startedAt =
+            window.resumeJobMonitor?.formatLocalTimestamp(data.started_at) ||
+            data.started_at ||
+            (window.resumeJobMonitor?.rt?.("unknownTime") || "未知时间");
+          banner.textContent =
+            window.resumeJobMonitor?.rt?.("crawlerRunningBanner", {
+              profileLabel: data.profile_label || "当前画像",
+              startedAt,
+            }) || `正在抓取 ${data.profile_label || "当前画像"}，开始于 ${startedAt}。`;
+          return;
+        }
+        banner.textContent =
+          window.resumeJobMonitor?.translateText?.(data.last_result) ||
+          data.last_result ||
+          window.resumeJobMonitor?.rt?.("crawlerFinishedBanner") ||
+          "后台抓取已结束。";
+        finished = true;
+        window.setTimeout(() => window.location.reload(), 1200);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    window.setInterval(pollRefreshState, 5000);
+  })();
+</script>
+{% endif %}
+{% endblock %}

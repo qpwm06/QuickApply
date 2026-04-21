@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section" id="tailor-summary">
+  <div class="section-card hero-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">Session 概览</p>
+        <h3>这里不再强调旧流水线，而是集中看 advice、session 和 PDF 是否可继续使用</h3>
+      </div>
+      <a href="{{ url_for('jobs_page') }}" class="ghost-link">回到 Jobs</a>
+    </div>
+
+    <div class="stat-grid">
+      <article class="stat-card">
+        <span class="stat-label">总记录</span>
+        <strong>{{ tailor_stats.total }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">运行中</span>
+        <strong>{{ tailor_stats.running }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">成功结束</span>
+        <strong>{{ tailor_stats.succeeded }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">已停止</span>
+        <strong>{{ tailor_stats.stopped }}</strong>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="tailor-table">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">工作区列表</p>
+        <h3>每个职位工作区只保留一行，用累计运行数代替重复 run 堆叠</h3>
+      </div>
+    </div>
+
+    <form method="get" action="{{ url_for('tailor_tasks') }}" class="toolbar-form compact-toolbar">
+      <label>
+        状态
+        <select name="status">
+          <option value="">全部</option>
+          {% for status in statuses %}
+          <option value="{{ status }}" {% if active_status == status %}selected{% endif %}>{{ status }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        画像
+        <select name="profile_slug">
+          <option value="">全部</option>
+          {% for profile in profiles %}
+          <option value="{{ profile.slug }}" {% if active_profile_slug == profile.slug %}selected{% endif %}>
+            {{ profile.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        条数
+        <input type="number" name="limit" value="{{ limit }}" min="10" max="200" step="10" />
+      </label>
+
+      <div class="form-actions">
+        <button type="submit" class="primary-button">应用筛选</button>
+      </div>
+    </form>
+
+    {% if tailor_runs %}
+    <div class="tailor-session-table">
+      <div class="table-header tailor-session-grid">
+        <span>职位</span>
+        <span>累计运行</span>
+        <span>最近状态</span>
+        <span>PDF / Session</span>
+        <span>操作</span>
+      </div>
+
+      {% for item in tailor_runs %}
+      <article class="table-row tailor-session-grid">
+        <div class="cell-stack">
+          <a href="{{ url_for('job_detail', job_id=item.run.job_id) }}" class="row-title">
+            {{ item.job.title if item.job else "未知职位" }}
+          </a>
+          <span class="row-subtitle">
+            {{ item.job.company if item.job else "无职位信息" }}
+            {% if item.job %}
+            · {{ item.job.profile_label }}
+            {% endif %}
+          </span>
+        </div>
+
+        <div class="cell-stack">
+          <span>{{ item.run_count }} 次运行</span>
+          <span class="row-subtitle">
+            {{ item.current_step_label }}
+            {% if item.base_resume_name %}
+            · {{ item.base_resume_name }}
+            {% endif %}
+          </span>
+        </div>
+
+        <div class="cell-stack">
+          <span class="status-pill status-{{ item.run.status }}">{{ item.run.status }}</span>
+          <span class="row-subtitle">{{ item.run.updated_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
+        </div>
+
+        <div class="cell-stack">
+          <span>{{ "已生成" if item.final_pdf_ready else "暂无" }}</span>
+          {% if item.session_id %}
+          <span class="row-subtitle mono-copy">{{ item.session_id[:12] }}</span>
+          {% elif item.latest_message %}
+          <span class="row-subtitle">{{ item.latest_message }}</span>
+          {% endif %}
+        </div>
+
+        <div class="list-actions">
+          <a href="{{ url_for('job_detail', job_id=item.run.job_id) }}" class="primary-link">继续编辑</a>
+          {% if item.active_run_id %}
+          <form method="post" action="{{ url_for('stop_tailor_run', run_id=item.active_run_id) }}" class="inline-action-form" data-native-scroll-restore>
+            <input type="hidden" name="return_to" value="{{ request.full_path[:-1] if request.full_path.endswith('?') else request.full_path }}" />
+            <button type="submit" class="ghost-button">停止</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('delete_tailor_run', run_id=item.latest_run_id) }}" class="inline-action-form" data-native-scroll-restore>
+            <input type="hidden" name="return_to" value="{{ request.full_path[:-1] if request.full_path.endswith('?') else request.full_path }}" />
+            <button type="submit" class="ghost-button">删除</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">当前筛选下还没有 Tailor session 记录。</div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

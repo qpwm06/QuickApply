@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section" id="tracker-summary">
+  <div class="section-card hero-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">追踪概览</p>
+        <h3>统一管理投递状态、时间线和后续精修入口</h3>
+      </div>
+      <div class="quick-actions">
+        <a href="{{ url_for('jobs_page') }}" class="ghost-link">回到 Jobs</a>
+        <a href="{{ url_for('crawler') }}" class="ghost-link">回到爬虫中心</a>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <article class="stat-card">
+        <span class="stat-label">总追踪</span>
+        <strong>{{ track_stats.total }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">关联职位</span>
+        <strong>{{ track_stats.linked }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">手工录入</span>
+        <strong>{{ track_stats.manual }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">当前筛选</span>
+        <strong>{{ active_filter_label }}</strong>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="tracker-manual">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">手工新增</p>
+        <h3>没有抓到的岗位，也可以先录入这里继续跟踪</h3>
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('create_manual_application_track_entry') }}" class="editor-form" data-native-scroll-restore>
+      <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+
+      <div class="toolbar-form">
+        <label>
+          职位名称
+          <input type="text" name="title" placeholder="Research Scientist" required />
+        </label>
+
+        <label>
+          公司
+          <input type="text" name="company" placeholder="LinkedIn / Indeed / 内推公司" required />
+        </label>
+
+        <label>
+          来源站点
+          <input type="text" name="source_site" value="linkedin" placeholder="linkedin / indeed / career_site" />
+        </label>
+
+        <label>
+          投递时间
+          <input type="datetime-local" name="applied_at_local" value="{{ default_applied_at_local }}" />
+        </label>
+
+        <label>
+          关联画像
+          <input type="text" name="profile_label" placeholder="Scientific ML / Quant / General" />
+        </label>
+
+        <label>
+          职位链接
+          <input type="url" name="job_url" placeholder="https://..." />
+        </label>
+      </div>
+
+      <label>
+        备注
+        <textarea name="notes" rows="4" placeholder="比如：内推人、当前状态、面试安排、需要补充的材料"></textarea>
+      </label>
+
+      <div class="form-actions">
+        <button type="submit" class="primary-button">新增追踪</button>
+        <span class="muted-copy">时间按 {{ local_timezone_label }} 解释并保存。</span>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="content-section" id="tracker-list">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">追踪列表</p>
+        <h3>每条 track 同时显示当前阶段、完整时间线和下一步更新入口</h3>
+      </div>
+    </div>
+
+    <form method="get" action="{{ url_for('application_tracker') }}" class="toolbar-form compact-toolbar">
+      <label>
+        来源类型
+        <select name="source_kind">
+          <option value="" {% if not active_source_kind %}selected{% endif %}>全部</option>
+          <option value="linked" {% if active_source_kind == "linked" %}selected{% endif %}>关联职位</option>
+          <option value="manual" {% if active_source_kind == "manual" %}selected{% endif %}>手工录入</option>
+        </select>
+      </label>
+
+      <label>
+        当前状态
+        <select name="stage">
+          <option value="" {% if not active_stage %}selected{% endif %}>全部</option>
+          {% for stage in stage_options %}
+          <option value="{{ stage }}" {% if active_stage == stage %}selected{% endif %}>{{ stage_labels.get(stage, stage) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        关键词
+        <input type="text" name="keyword" value="{{ active_keyword }}" placeholder="职位或公司" />
+      </label>
+
+      <label>
+        条数
+        <input type="number" name="limit" value="{{ limit }}" min="10" max="200" step="10" />
+      </label>
+
+      <div class="form-actions">
+        <button type="submit" class="primary-button">应用筛选</button>
+        <a href="{{ url_for('application_tracker') }}" class="ghost-link">清空筛选</a>
+      </div>
+    </form>
+
+    {% if application_tracks %}
+    <div class="tracker-list">
+      {% for item in application_tracks %}
+      <details class="section-card tracker-card tracker-details">
+        <summary class="tracker-summary-head">
+          <div class="tracker-title-block">
+            <strong class="row-title">{{ item.track.title }}</strong>
+            <p class="row-subtitle">
+              {{ item.track.company }}
+              {% if item.job %}
+              · {{ item.job.location_text or "地点未注明" }}
+              {% else %}
+              · 手工录入
+              {% endif %}
+            </p>
+          </div>
+
+          <div class="tracker-summary-meta">
+            <span class="status-pill status-{{ item.track.current_stage }}">{{ item.current_stage_label }}</span>
+            <span class="meta-pill small-pill">{{ item.track.applied_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
+            <span class="meta-pill small-pill">{{ item.events|length }} 个事件</span>
+            <span class="meta-pill small-pill">{{ item.track.source_site|replace("_", " ")|title }}</span>
+            {% if item.track.profile_label %}
+            <span class="meta-pill small-pill">{{ item.track.profile_label }}</span>
+            {% endif %}
+            <span class="meta-pill small-pill">{{ item.track_kind_label }}</span>
+            {% if item.job %}
+            <span class="meta-pill small-pill">{{ item.job_country }}</span>
+            {% endif %}
+          </div>
+        </summary>
+
+        <div class="tracker-card-content">
+          <div class="tracker-summary-grid">
+            <div class="mini-surface">
+              <div class="mini-surface-head">
+                <span>当前阶段</span>
+                <span class="status-pill status-{{ item.track.current_stage }}">{{ item.current_stage_label }}</span>
+              </div>
+              <p class="mini-surface-text">
+                {{ item.track.current_stage_at|localtime("%Y-%m-%d %H:%M %Z") if item.track.current_stage_at else "尚未更新" }}
+              </p>
+            </div>
+
+            <div class="mini-surface">
+              <div class="mini-surface-head">
+                <span>投递时间</span>
+                <span class="mini-badge">{{ item.events|length }} 个事件</span>
+              </div>
+              <p class="mini-surface-text">{{ item.track.applied_at|localtime("%Y-%m-%d %H:%M %Z") }}</p>
+            </div>
+
+            <div class="mini-surface">
+              <div class="mini-surface-head">
+                <span>最近备注</span>
+              </div>
+              <p class="mini-surface-text">{{ item.track.latest_notes or item.track.notes or "暂无备注" }}</p>
+            </div>
+          </div>
+
+          <div class="tracker-body-grid">
+            <div class="tracker-timeline">
+              <div class="tracker-subhead">
+                <strong>事件流</strong>
+              </div>
+              {% if item.events %}
+              <div class="timeline-list">
+                {% for event in item.events %}
+                <div class="timeline-item">
+                  <div class="timeline-marker status-{{ event.stage }}"></div>
+                  <div class="timeline-content">
+                    <div class="timeline-line">
+                      <strong>{{ stage_labels.get(event.stage, event.stage) }}</strong>
+                      <span>{{ event.occurred_at|localtime("%m-%d %H:%M %Z") }}</span>
+                    </div>
+                    <p{% if not event.notes %} class="timeline-fallback-copy"{% endif %}>{{ event.notes or "无附加备注" }}</p>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+              {% else %}
+              <div class="empty-state compact-empty-state">当前还没有事件记录。</div>
+              {% endif %}
+            </div>
+
+            <div class="tracker-actions-panel">
+              <div class="tracker-subhead">
+                <strong>追加阶段</strong>
+              </div>
+              <form method="post" action="{{ url_for('add_application_track_event_entry', track_id=item.track.id) }}" class="editor-form compact-editor-form" data-native-scroll-restore>
+                <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+
+                <div class="toolbar-form compact-toolbar tracker-event-toolbar">
+                  <label>
+                    阶段
+                    <select name="stage">
+                      {% for stage in stage_options %}
+                      <option value="{{ stage }}" {% if stage == item.track.current_stage %}selected{% endif %}>{{ stage_labels.get(stage, stage) }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+
+                  <label>
+                    时间
+                    <input type="datetime-local" name="occurred_at_local" value="{{ default_stage_event_local }}" />
+                  </label>
+                </div>
+
+                <label>
+                  备注
+                  <textarea name="notes" rows="3" placeholder="例如：约到 phone screen / 推荐人已介绍 / 面试失败原因"></textarea>
+                </label>
+
+                <div class="form-actions">
+                  <button type="submit" class="primary-button">追加事件</button>
+                </div>
+              </form>
+
+              <div class="list-actions top-space-sm">
+                {% if item.job %}
+                <a href="{{ url_for('job_detail', job_id=item.job.id) }}" class="primary-link">简历精修</a>
+                {% endif %}
+                {% if item.track.job_url %}
+                <a href="{{ item.track.job_url }}" target="_blank" rel="noreferrer" class="ghost-link">职位页</a>
+                {% endif %}
+                <form method="post" action="{{ url_for('delete_application_track_entry', track_id=item.track.id) }}" class="inline-action-form" data-native-scroll-restore>
+                  <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+                  <button type="submit" class="ghost-button">
+                    {% if item.track.source_kind == "linked" %}
+                    取消追踪
+                    {% else %}
+                    删除记录
+                    {% endif %}
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">当前筛选条件下还没有投递追踪记录。</div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

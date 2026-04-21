@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="topbar">
+  <div class="topbar-copy">
+    <p class="eyebrow">Resume-driven monitor</p>
+    <h1>按简历画像持续搜岗</h1>
+    <p class="muted-line">抓取、筛选、精修都围绕你本地的 TeX 简历和画像关键词展开。</p>
+  </div>
+  <div class="topbar-meta">
+    <span class="meta-pill">简历来源 {{ resume_profile.source_files | length }} 份</span>
+    <span class="meta-pill">
+      自动刷新
+      {% if next_run %}
+      {{ next_run|localtime("%Y-%m-%d %H:%M %Z") }}
+      {% else %}
+      未启动
+      {% endif %}
+    </span>
+  </div>
+</section>
+
+<section class="inline-summary">
+  <div class="summary-row">
+    <span class="summary-label">当前简历</span>
+    <div class="summary-values">
+      {% for source_path in resume_profile.source_files %}
+      <span class="file-pill" title="{{ source_path }}">{{ source_path.split("/")[-1] }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="summary-row">
+    <span class="summary-label">打分</span>
+    <div class="summary-values">
+      <span class="meta-pill">标题 {{ "%.0f"|format(scoring_model.title_weight * 100) }}%</span>
+      <span class="meta-pill">关键词 {{ "%.0f"|format(scoring_model.keyword_weight * 100) }}%</span>
+      <span class="meta-pill">领域 {{ "%.0f"|format(scoring_model.domain_weight * 100) }}%</span>
+      <span class="meta-pill">惩罚 -{{ "%.0f"|format(scoring_model.penalty * 100) }}</span>
+    </div>
+  </div>
+</section>
+
+{% if message %}
+<section class="status-banner notice">{{ message }}</section>
+{% endif %}
+
+<section class="status-banner {% if refresh_state.running %}running{% endif %}" id="refresh-banner">
+  {% if refresh_state.running %}
+  正在抓取 {{ refresh_state.profile_label }}，开始于
+  {{ refresh_state.started_at|localtime("%Y-%m-%d %H:%M:%S %Z") if refresh_state.started_at else "未知时间" }}。
+  {% elif refresh_state.last_result %}
+  {{ refresh_state.last_result }}
+  {% else %}
+  当前没有后台抓取任务。
+  {% endif %}
+</section>
+
+<section class="compact-grid">
+  <article class="panel metric-panel">
+    <span class="panel-label">职位总数</span>
+    <strong>{{ overview.total_jobs }}</strong>
+  </article>
+  <article class="panel metric-panel">
+    <span class="panel-label">高分职位</span>
+    <strong>{{ overview.strong_matches }}</strong>
+  </article>
+  <article class="panel metric-panel">
+    <span class="panel-label">近 7 天更新</span>
+    <strong>{{ overview.recent_jobs }}</strong>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">画像与关键词</p>
+      <h2>搜索画像</h2>
+    </div>
+    <form method="post" action="/refresh" class="inline-form" data-native-scroll-restore>
+      <select name="profile_slug">
+        <option value="all">全部画像</option>
+        {% for profile in profiles %}
+        <option value="{{ profile.slug }}">{{ profile.label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="primary-button" {% if refresh_state.running %}disabled{% endif %}>
+        {% if refresh_state.running %}抓取中{% else %}立即抓取{% endif %}
+      </button>
+    </form>
+  </div>
+
+  <div class="profile-list">
+    {% for item in profiles_view %}
+    <article class="profile-row">
+      <div class="profile-row-main">
+        <div class="profile-heading">
+          <div>
+            <h3>{{ item.profile.label }}</h3>
+            <p class="muted-line">
+              {{ item.job_count }} 个职位 · 最高 {{ "%.1f"|format(item.best_score) }}
+              · 最近刷新
+              {% if item.last_refresh %}
+              {{ item.last_refresh|localtime("%Y-%m-%d %H:%M %Z") }}
+              {% else %}
+              暂无
+              {% endif %}
+            </p>
+          </div>
+          <form method="post" action="/refresh" class="inline-form" data-native-scroll-restore>
+            <input type="hidden" name="profile_slug" value="{{ item.profile.slug }}" />
+            <button type="submit" class="ghost-button" {% if refresh_state.running %}disabled{% endif %}>刷新该画像</button>
+          </form>
+        </div>
+
+        <div class="term-list">
+          {% for term in item.profile.search_terms %}
+          <form method="post" action="/profiles/{{ item.profile.slug }}/terms/delete" class="term-chip term-chip-form" data-native-scroll-restore>
+            <input type="hidden" name="search_term" value="{{ term }}" />
+            <span>{{ term }}</span>
+            <button type="submit" aria-label="删除关键词">×</button>
+          </form>
+          {% endfor %}
+        </div>
+
+        <form method="post" action="/profiles/{{ item.profile.slug }}/terms" class="add-term-form" data-native-scroll-restore>
+          <input
+            type="text"
+            name="search_term"
+            placeholder="新增搜索关键词，例如 &quot;scientific machine learning&quot; polymer"
+          />
+          <button type="submit" class="ghost-button">添加关键词</button>
+        </form>
+      </div>
+
+      <div class="profile-row-side">
+        <div class="mini-list">
+          <span class="mini-label">默认简历</span>
+          <span>{{ item.profile.default_resume_file.split("/")[-1] if item.profile.default_resume_file else "未设置" }}</span>
+        </div>
+        <div class="mini-list">
+          <span class="mini-label">站点来源</span>
+          <div class="mini-tags">
+            {% for site in item.profile.sites %}
+            <span class="mini-tag">{{ site|replace("_", " ")|title }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">筛选</p>
+      <h2>推荐职位</h2>
+    </div>
+    <div class="source-inline">
+      {% for item in source_site_overview %}
+      <span class="mini-tag">
+        {{ item.source_site|replace("_", " ")|title }} {{ item.job_count }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <form method="get" action="/" class="filters-form">
+    <label>
+      画像
+      <select name="profile_slug">
+        <option value="">全部</option>
+        {% for profile in profiles %}
+        <option value="{{ profile.slug }}" {% if active_profile_slug == profile.slug %}selected{% endif %}>{{ profile.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      地点关键词
+      <input type="text" name="location_query" value="{{ location_query }}" placeholder="Chicago / Beijing / Remote" />
+    </label>
+
+    <label>
+      最低分
+      <input type="number" name="min_score" value="{{ min_score }}" min="0" max="100" />
+    </label>
+
+    <label>
+      条数
+      <input type="number" name="limit" value="{{ limit }}" min="10" max="200" step="10" />
+    </label>
+
+    <fieldset class="country-group">
+      <legend>国家</legend>
+      <div class="country-options">
+        {% for option in country_options %}
+        <label class="checkbox-pill">
+          <input type="checkbox" name="countries" value="{{ option }}" {% if option in selected_country_set %}checked{% endif %} />
+          <span>{{ option }} · {{ country_stats_map.get(option, 0) }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <button type="submit" class="primary-button">应用筛选</button>
+  </form>
+
+  <div class="job-table">
+    <div class="job-table-head">
+      <span>职位</span>
+      <span>画像 / 来源</span>
+      <span>地点</span>
+      <span>分数</span>
+      <span>最近刷新</span>
+      <span>操作</span>
+    </div>
+
+    {% if jobs_view %}
+    {% for item in jobs_view %}
+    <article class="job-row">
+      <div class="job-cell job-main">
+        <a href="/jobs/{{ item.job.id }}" class="job-title-link">{{ item.job.title }}</a>
+        <span class="job-company">@ {{ item.job.company }}</span>
+        {% if item.job.matched_keywords %}
+        <span class="job-chip">{{ item.job.matched_keywords }}</span>
+        {% endif %}
+      </div>
+
+      <div class="job-cell job-meta-inline">
+        <span class="meta-pill small-pill">{{ item.job.profile_label }}</span>
+        <span class="mini-tag">{{ item.job.source_site|replace("_", " ")|title }}</span>
+      </div>
+
+      <div class="job-cell job-meta-inline">
+        <span>{{ item.job.location_text or "地点未注明" }}</span>
+        <span class="job-subline">· {{ item.country_label }}</span>
+      </div>
+
+      <div class="job-cell score-cell">{{ "%.1f"|format(item.job.score) }}</div>
+
+      <div class="job-cell job-meta-inline">
+        <span>{{ item.job.last_seen_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
+        {% if item.job.date_posted %}
+        <span class="job-subline">· 发布 {{ item.job.date_posted|localtime("%Y-%m-%d") }}</span>
+        {% endif %}
+      </div>
+
+      <div class="job-cell action-cell">
+        <a href="/jobs/{{ item.job.id }}" class="primary-link">简历精修</a>
+        {% if item.job.job_url %}
+        <a href="{{ item.job.job_url }}" target="_blank" rel="noreferrer" class="ghost-link">职位页</a>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">当前筛选下还没有职位。先抓取，或放宽分数与地点过滤。</div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">最近运行</p>
+      <h2>抓取记录</h2>
+    </div>
+    <span class="muted-line">{{ scoring_model.formula }}</span>
+  </div>
+
+  <div class="run-list">
+    {% for run in refresh_runs %}
+    <div class="run-row">
+      <span>{{ run.profile_label }}</span>
+      <span>抓到 {{ run.jobs_seen }}</span>
+      <span>保存 {{ run.jobs_saved }}</span>
+      <span>{{ run.finished_at|localtime("%Y-%m-%d %H:%M %Z") if run.finished_at else "进行中" }}</span>
+      <span class="{% if run.success %}run-ok{% else %}run-warn{% endif %}">
+        {% if run.success %}成功{% else %}失败{% endif %}
+      </span>
+    </div>
+    {% else %}
+    <div class="empty-state">还没有抓取记录。</div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if refresh_state.running %}
+<script>
+  (() => {
+    const banner = document.getElementById("refresh-banner");
+    let finished = false;
+
+    async function pollRefreshState() {
+      if (finished) return;
+      try {
+        const response = await fetch("/api/refresh-status", { headers: { "Accept": "application/json" } });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.running) {
+          banner.textContent = `正在抓取 ${data.profile_label || "当前画像"}，开始于 ${data.started_at || "未知时间"}。`;
+          return;
+        }
+        banner.textContent = data.last_result || "后台抓取已结束。";
+        finished = true;
+        window.setTimeout(() => window.location.reload(), 1200);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    window.setInterval(pollRefreshState, 5000);
+  })();
+</script>
+{% endif %}
+{% endblock %}

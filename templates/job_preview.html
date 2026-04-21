@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section" id="job-preview-summary">
+  <div class="section-card job-preview-shell">
+    <div class="section-card-header">
+      <div>
+        <a href="{{ url_for('jobs_page') }}" class="back-link">← 返回 Jobs</a>
+        <p class="section-kicker">岗位描述窗口</p>
+        <h3>{{ job.title }}</h3>
+        <p class="row-subtitle">
+          {{ job.company }} · {{ job.location_text or "地点未注明" }} · {{ job.source_site|replace("_", " ")|title }}
+        </p>
+      </div>
+      <div class="hero-meta-panel">
+        <div class="meta-pills-wrap">
+          <span class="meta-pill">匹配分 {{ "%.1f"|format(job.score) }}</span>
+          <span class="meta-pill">{{ job_country }}</span>
+          <span class="meta-pill">{{ job.profile_label }}</span>
+          {% if job.date_posted %}
+          <span class="meta-pill">发布 {{ job.date_posted|localtime("%Y-%m-%d") }}</span>
+          {% endif %}
+        </div>
+        <p class="row-subtitle job-preview-note">这个窗口会被 Jobs 和 Tailor 页的“岗位描述”按钮重复复用。</p>
+      </div>
+    </div>
+
+    <div class="job-preview-grid">
+      <article class="mini-surface mini-surface-compact">
+        <div class="mini-surface-head">
+          <span>搜索画像</span>
+        </div>
+        <p class="mini-surface-text">{{ job.profile_label }}</p>
+        <p class="row-subtitle wrap-anywhere">{{ job.search_term }}</p>
+      </article>
+
+      <article class="mini-surface mini-surface-compact">
+        <div class="mini-surface-head">
+          <span>来源与地点</span>
+        </div>
+        <p class="mini-surface-text">{{ job.source_site|replace("_", " ")|title }}</p>
+        <p class="row-subtitle">{{ job.location_text or "地点未注明" }}</p>
+      </article>
+
+      <article class="mini-surface mini-surface-compact">
+        <div class="mini-surface-head">
+          <span>命中关键词</span>
+        </div>
+        <p class="mini-surface-text wrap-anywhere">{{ job.matched_keywords or "暂无" }}</p>
+      </article>
+
+      <article class="mini-surface mini-surface-compact">
+        <div class="mini-surface-head">
+          <span>原始链接</span>
+        </div>
+        {% if job.job_url %}
+        <a href="{{ job.job_url }}" target="_blank" rel="noreferrer" class="primary-link">打开原始职位页</a>
+        {% else %}
+        <p class="mini-surface-text">暂无外部链接</p>
+        <p class="row-subtitle">当前只能查看本地抓取到的岗位描述。</p>
+        {% endif %}
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="job-preview-description">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">Description</p>
+        <h3>抓取到的岗位描述</h3>
+      </div>
+    </div>
+    <pre class="job-preview-text">{{ job.description or "当前没有抓取到岗位描述。通常是站点防爬或职位页内容结构不稳定导致。" }}</pre>
+  </div>
+</section>
+
+<section class="content-section" id="job-preview-fit">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">Fit Notes</p>
+        <h3>评分备注与缺口提示</h3>
+      </div>
+    </div>
+    <pre class="job-preview-text compact">{{ job.explanation or "当前还没有额外的匹配备注。" }}</pre>
+    {% if job.missing_keywords %}
+    <p class="row-subtitle top-space-sm wrap-anywhere">缺失关键词：{{ job.missing_keywords }}</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

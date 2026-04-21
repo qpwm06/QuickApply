@@ -1,0 +1,630 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section" id="jobs-filters">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">筛选工具栏</p>
+        <h3>完整职位池在这里筛选，再进入单个岗位精修</h3>
+      </div>
+      <a href="{{ url_for('tailor_tasks') }}" class="ghost-link">查看 Tailor Sessions</a>
+    </div>
+
+    <form method="get" action="{{ url_for('jobs_page') }}" class="toolbar-form jobs-toolbar-form">
+      <label>
+        画像
+        <select name="profile_slug">
+          <option value="">全部</option>
+          {% for profile in profiles %}
+          <option value="{{ profile.slug }}" {% if active_profile_slug == profile.slug %}selected{% endif %}>
+            {{ profile.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        地点关键词
+        <input type="text" name="location_query" value="{{ location_query }}" placeholder="Chicago / Beijing / Remote" />
+      </label>
+
+      <label>
+        关键词筛选
+        <input type="text" name="include_keywords" value="{{ include_keywords }}" placeholder="postdoc, materials, chemistry" />
+      </label>
+
+      <label>
+        关键词屏蔽
+        <input type="text" name="exclude_keywords" value="{{ exclude_keywords }}" placeholder="intern, internship" />
+      </label>
+
+      <label>
+        最低分
+        <input type="number" name="min_score" value="{{ min_score }}" min="0" max="100" />
+      </label>
+
+      <label>
+        排序
+        <select name="sort_by">
+          <option value="recent" {% if sort_by == "recent" %}selected{% endif %}>最近刷新</option>
+          <option value="score" {% if sort_by == "score" %}selected{% endif %}>匹配分</option>
+        </select>
+      </label>
+
+      <label>
+        时间窗口
+        <select name="recent_hours">
+          <option value="0" {% if recent_hours == 0 %}selected{% endif %}>全部</option>
+          <option value="24" {% if recent_hours == 24 %}selected{% endif %}>最近 24 小时</option>
+        </select>
+      </label>
+
+      <label>
+        条数
+        <input type="number" name="limit" value="{{ limit }}" min="10" max="200" step="10" />
+      </label>
+
+      <fieldset class="toolbar-fieldset">
+        <legend>国家</legend>
+        <div class="country-options">
+          {% for option in country_options %}
+          <label class="checkbox-pill">
+            <input type="checkbox" name="countries" value="{{ option }}" {% if option in selected_country_set %}checked{% endif %} />
+            <span>{{ option }} · {{ country_stats_map.get(option, 0) }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <button type="submit" class="primary-button">应用筛选</button>
+    </form>
+
+    <div class="jobs-admin-grid top-space-sm">
+      <article class="mini-surface">
+        <div class="mini-surface-head">
+          <span>排除公司</span>
+          <span class="mini-badge">{{ excluded_companies|length }}</span>
+        </div>
+        <form method="post" action="{{ url_for('create_excluded_company_entry') }}" class="add-term-form top-space-sm" data-native-scroll-restore>
+          <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+          <input type="text" name="company_name" placeholder="手工加入需要屏蔽的公司" />
+          <button type="submit" class="ghost-button">加入排除</button>
+        </form>
+      </article>
+
+      <article class="mini-surface">
+        <div class="mini-surface-head">
+          <span>当前排除列表</span>
+        </div>
+        <div class="term-list">
+          {% for company in excluded_companies %}
+          <div class="term-chip">
+            <span>{{ company.display_name }}</span>
+            <form method="post" action="{{ url_for('delete_excluded_company_entry', company_id=company.id) }}" class="term-chip-delete-form" data-native-scroll-restore>
+              <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+              <button type="submit" aria-label="移除排除公司">×</button>
+            </form>
+          </div>
+          {% else %}
+          <div class="empty-state compact-empty-state">当前没有排除公司。</div>
+          {% endfor %}
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="jobs-table">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">职位表格</p>
+        <h3>每个职位一行，优先从这里进入精修</h3>
+      </div>
+      <a href="{{ url_for('application_tracker') }}" class="ghost-link">投递追踪页</a>
+    </div>
+
+    <div class="jobs-summary-strip" aria-live="polite">
+      <span class="jobs-summary-pill">剩余 <strong>{{ jobs_counts.remaining_count }}</strong></span>
+      <span class="jobs-summary-pill">已投递 <strong>{{ jobs_counts.applied_count }}</strong></span>
+      <span class="jobs-summary-pill">已查阅 <strong>{{ jobs_counts.reviewed_count }}</strong></span>
+    </div>
+
+    {% if jobs_view %}
+    <div class="table-shell" id="jobs-table-shell">
+      <div class="table-header job-grid">
+        <span>职位</span>
+        <span>画像 / 来源</span>
+        <span>地点</span>
+        <a href="{{ jobs_sort_urls.score }}" class="table-sort-link {% if sort_by == 'score' %}active{% endif %}">
+          分数
+        </a>
+        <a href="{{ jobs_sort_urls.recent }}" class="table-sort-link {% if sort_by == 'recent' %}active{% endif %}">
+          最近刷新
+        </a>
+        <span>操作</span>
+      </div>
+
+      {% for item in jobs_view %}
+      <article class="table-row job-grid" data-job-row="{{ item.job.id }}">
+        <div class="cell-stack">
+          <button
+            type="button"
+            class="row-title row-title-button"
+            data-job-popup-link
+            data-open-url="{{ item.job.job_url or url_for('job_preview', job_id=item.job.id) }}"
+            data-browser-window-route="{{ url_for('open_job_browser_window', job_id=item.job.id) }}"
+          >{{ item.job.title }}</button>
+          <div class="row-inline-actions">
+            <p class="row-subtitle">{{ item.job.company }}</p>
+            <form method="post" action="{{ url_for('exclude_job_company', job_id=item.job.id) }}" class="inline-action-form" data-job-action-form>
+              <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+              <button type="submit" class="row-inline-button">排除公司</button>
+            </form>
+          </div>
+          {% if item.job.matched_keywords %}
+          <span class="job-chip">{{ item.job.matched_keywords }}</span>
+          {% endif %}
+        </div>
+
+        <div class="cell-stack">
+          <span>{{ item.job.profile_label }}</span>
+          <span class="row-subtitle">{{ item.job.source_site|replace("_", " ")|title }}</span>
+        </div>
+
+        <div class="cell-stack">
+          <span>{{ item.job.location_text or "地点未注明" }}</span>
+          <span class="row-subtitle">{{ item.country_label }}</span>
+        </div>
+
+        <div class="list-score">{{ "%.1f"|format(item.job.score) }}</div>
+
+        <div class="cell-stack">
+          <span>{{ item.job.last_seen_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
+          {% if item.job.date_posted %}
+          <span class="row-subtitle">发布 {{ item.job.date_posted|localtime("%Y-%m-%d") }}</span>
+          {% endif %}
+          {% if item.job.applied_at %}
+          <span class="row-subtitle">投递 {{ item.job.applied_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
+          {% endif %}
+        </div>
+
+        <div class="list-actions">
+          <form method="post" action="{{ url_for('update_job_application', job_id=item.job.id) }}" class="inline-action-form" data-job-apply-form>
+            <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+            <input type="hidden" name="action" value="mark" />
+            <button type="submit" class="primary-button">标记投递</button>
+          </form>
+          <form method="post" action="{{ url_for('dismiss_job', job_id=item.job.id) }}" class="inline-action-form" data-job-action-form>
+            <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+            <button type="submit" class="ghost-button">不合适</button>
+          </form>
+          <a href="{{ url_for('job_detail', job_id=item.job.id) }}" class="primary-link">简历精修</a>
+          <button
+            type="button"
+            class="ghost-link"
+            data-job-popup-link
+            data-open-url="{{ item.job.job_url or url_for('job_preview', job_id=item.job.id) }}"
+            data-browser-window-route="{{ url_for('open_job_browser_window', job_id=item.job.id) }}"
+          >岗位描述</button>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    <div class="empty-state" id="jobs-empty-state" hidden>当前筛选条件下还没有职位。可以回到 Crawler 增加关键词或刷新一次。</div>
+    {% else %}
+    <div class="empty-state">当前筛选条件下还没有职位。可以回到 Crawler 增加关键词或刷新一次。</div>
+    {% endif %}
+  </div>
+</section>
+
+<script>
+  (() => {
+    const nativeFallbackScrollKey = "quickapply:jobs-native-fallback-scroll";
+    const jobsKeywordStorageKey = "quickapply:jobs-keyword-filters";
+    let pendingJobsRequest = null;
+    let jobsFiltersSection = null;
+    let jobsTableSection = null;
+    let headerSide = null;
+    let banner = null;
+    let tableShell = null;
+    let emptyState = null;
+
+    function cacheJobsDom() {
+      jobsFiltersSection = document.getElementById("jobs-filters");
+      jobsTableSection = document.getElementById("jobs-table");
+      headerSide = document.querySelector(".page-header-side");
+      banner = document.querySelector(".global-banner");
+      tableShell = document.getElementById("jobs-table-shell");
+      emptyState = document.getElementById("jobs-empty-state");
+    }
+
+    cacheJobsDom();
+
+    function runtimeText(key, params = {}, fallback = "") {
+      return window.resumeJobMonitor?.rt?.(key, params) || fallback;
+    }
+
+    function renderMessage(message) {
+      if (!banner || !message) return;
+      banner.textContent = window.resumeJobMonitor?.translateText?.(message) || message;
+      banner.hidden = false;
+    }
+
+    function syncEmptyState() {
+      if (!tableShell || !emptyState) return;
+      const hasRows = Boolean(tableShell.querySelector("[data-job-row]"));
+      tableShell.hidden = !hasRows;
+      emptyState.hidden = hasRows;
+    }
+
+    function jobsFilterForm() {
+      return document.querySelector("#jobs-filters form[method='get'], #jobs-filters form[method='GET']");
+    }
+
+    function jobsKeywordInputs(form = jobsFilterForm()) {
+      if (!(form instanceof HTMLFormElement)) {
+        return {
+          form: null,
+          includeInput: null,
+          excludeInput: null,
+        };
+      }
+      const includeInput = form.elements.namedItem("include_keywords");
+      const excludeInput = form.elements.namedItem("exclude_keywords");
+      return {
+        form,
+        includeInput: includeInput instanceof HTMLInputElement ? includeInput : null,
+        excludeInput: excludeInput instanceof HTMLInputElement ? excludeInput : null,
+      };
+    }
+
+    function normalizeKeywordValue(value) {
+      return typeof value === "string" ? value.trim() : "";
+    }
+
+    function writePersistedJobsKeywordFilters({ include_keywords = "", exclude_keywords = "" } = {}) {
+      const payload = {
+        include_keywords: normalizeKeywordValue(include_keywords),
+        exclude_keywords: normalizeKeywordValue(exclude_keywords),
+      };
+      try {
+        if (!payload.include_keywords && !payload.exclude_keywords) {
+          localStorage.removeItem(jobsKeywordStorageKey);
+          return;
+        }
+        localStorage.setItem(jobsKeywordStorageKey, JSON.stringify(payload));
+      } catch (error) {
+        console.warn("无法写入 Jobs 页关键词筛选记忆。", error);
+      }
+    }
+
+    function readPersistedJobsKeywordFilters() {
+      try {
+        const raw = localStorage.getItem(jobsKeywordStorageKey);
+        if (!raw) return null;
+        const payload = JSON.parse(raw);
+        if (!payload || typeof payload !== "object") return null;
+        const includeKeywords = normalizeKeywordValue(payload.include_keywords);
+        const excludeKeywords = normalizeKeywordValue(payload.exclude_keywords);
+        if (!includeKeywords && !excludeKeywords) return null;
+        return {
+          include_keywords: includeKeywords,
+          exclude_keywords: excludeKeywords,
+        };
+      } catch (error) {
+        console.warn("无法读取 Jobs 页关键词筛选记忆。", error);
+        return null;
+      }
+    }
+
+    function persistJobsKeywordFiltersFromForm(form = jobsFilterForm()) {
+      const { includeInput, excludeInput } = jobsKeywordInputs(form);
+      writePersistedJobsKeywordFilters({
+        include_keywords: includeInput?.value || "",
+        exclude_keywords: excludeInput?.value || "",
+      });
+    }
+
+    function currentUrlHasExplicitKeywordFilters() {
+      const searchParams = new URLSearchParams(window.location.search);
+      return searchParams.has("include_keywords") || searchParams.has("exclude_keywords");
+    }
+
+    function restorePersistedJobsKeywordFiltersIfNeeded() {
+      const { form, includeInput, excludeInput } = jobsKeywordInputs();
+      if (!form || !includeInput || !excludeInput) return false;
+
+      if (currentUrlHasExplicitKeywordFilters()) {
+        persistJobsKeywordFiltersFromForm(form);
+        return false;
+      }
+
+      const persisted = readPersistedJobsKeywordFilters();
+      if (!persisted) {
+        persistJobsKeywordFiltersFromForm(form);
+        return false;
+      }
+
+      includeInput.value = persisted.include_keywords;
+      excludeInput.value = persisted.exclude_keywords;
+      loadJobsView(buildJobsViewUrl(form), { pushHistory: false }).finally(() => {
+        restoreNativeFallbackScrollState();
+      });
+      return true;
+    }
+
+    function rememberNativeFallbackScrollState(jobId = "") {
+      try {
+        sessionStorage.setItem(
+          nativeFallbackScrollKey,
+          JSON.stringify({
+            pathname: window.location.pathname,
+            scrollY: window.scrollY,
+            jobId,
+            savedAt: Date.now(),
+          }),
+        );
+      } catch (error) {
+        console.warn("无法保存 Jobs 页原生回退位置。", error);
+      }
+    }
+
+    function restoreNativeFallbackScrollState() {
+      try {
+        const raw = sessionStorage.getItem(nativeFallbackScrollKey);
+        if (!raw) return;
+        sessionStorage.removeItem(nativeFallbackScrollKey);
+        const state = JSON.parse(raw);
+        if (!state || state.pathname !== window.location.pathname) return;
+        if (Date.now() - Number(state.savedAt || 0) > 60_000) return;
+        window.requestAnimationFrame(() => {
+          window.scrollTo(0, Number(state.scrollY || 0));
+          const row = state.jobId
+            ? document.querySelector(`[data-job-row="${state.jobId}"]`)
+            : null;
+          if (!row) return;
+          row.classList.add("flash-focus");
+          window.setTimeout(() => row.classList.remove("flash-focus"), 1800);
+        });
+      } catch (error) {
+        console.warn("无法恢复 Jobs 页原生回退位置。", error);
+      }
+    }
+
+    function toggleLoadingState(isLoading) {
+      for (const section of [jobsFiltersSection, jobsTableSection]) {
+        if (!section) continue;
+        section.toggleAttribute("data-loading", isLoading);
+        section.setAttribute("aria-busy", isLoading ? "true" : "false");
+      }
+    }
+
+    function submitFormNatively(form) {
+      const jobId = form.closest("[data-job-row]")?.dataset.jobRow || "";
+      rememberNativeFallbackScrollState(jobId);
+      HTMLFormElement.prototype.submit.call(form);
+    }
+
+    async function submitJobAction(form, { timeoutMs = 8000 } = {}) {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "X-Requested-With": "quickapply",
+          },
+          body: new FormData(form),
+          signal: controller.signal,
+        });
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(
+            runtimeText("jobsJsonMissing", { status: response.status }, `服务器没有返回 JSON（${response.status}）。`),
+          );
+        }
+
+        const data = await response.json();
+        if (!response.ok || data.ok === false) {
+          throw new Error(
+            data.message ||
+              runtimeText("requestFailed", { status: response.status }, `请求失败（${response.status}）。`),
+          );
+        }
+
+        return data;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    }
+
+    function buildJobsViewUrl(form) {
+      const url = new URL(form.action || window.location.href, window.location.origin);
+      url.search = "";
+      const params = new URLSearchParams();
+      for (const [key, value] of new FormData(form).entries()) {
+        if (typeof value !== "string") continue;
+        params.append(key, value);
+      }
+      url.search = params.toString();
+      return url.toString();
+    }
+
+    async function fetchJobsDocument(url, signal) {
+      const response = await fetch(url, {
+        headers: {
+          Accept: "text/html, */*;q=0.1",
+        },
+        signal,
+      });
+      if (!response.ok) {
+        throw new Error(
+          runtimeText(
+            "jobsPageRequestFailed",
+            { status: response.status },
+            `Jobs 页面请求失败（${response.status}）。`,
+          ),
+        );
+      }
+      const html = await response.text();
+      return new DOMParser().parseFromString(html, "text/html");
+    }
+
+    function replaceJobsNode(selector, nextDocument) {
+      const currentNode = document.querySelector(selector);
+      const nextNode = nextDocument.querySelector(selector);
+      if (!currentNode || !nextNode) {
+        throw new Error(`Jobs 页面缺少必要节点：${selector}`);
+      }
+      currentNode.replaceWith(nextNode);
+    }
+
+    function replaceJobsView(nextDocument) {
+      replaceJobsNode("#jobs-filters", nextDocument);
+      replaceJobsNode("#jobs-table", nextDocument);
+      replaceJobsNode(".page-header-side", nextDocument);
+      replaceJobsNode(".global-banner", nextDocument);
+      document.title = nextDocument.title || document.title;
+      cacheJobsDom();
+      persistJobsKeywordFiltersFromForm();
+      syncEmptyState();
+      window.resumeJobMonitor?.applyLanguage?.(document);
+    }
+
+    async function loadJobsView(url, { pushHistory = true } = {}) {
+      if (pendingJobsRequest) {
+        pendingJobsRequest.abort();
+      }
+
+      const controller = new AbortController();
+      pendingJobsRequest = controller;
+      toggleLoadingState(true);
+
+      try {
+        const nextDocument = await fetchJobsDocument(url, controller.signal);
+        replaceJobsView(nextDocument);
+        if (pushHistory) {
+          window.history.pushState({ jobsView: true }, "", url);
+        } else {
+          window.history.replaceState({ jobsView: true }, "", url);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        console.error(error);
+        window.location.assign(url);
+      } finally {
+        if (pendingJobsRequest === controller) {
+          pendingJobsRequest = null;
+          toggleLoadingState(false);
+        }
+      }
+    }
+
+    // 中文注释：排序和筛选改成同页抓取 + 局部替换，避免整页刷新后再把滚动位置“拉回来”。
+    document.addEventListener("click", (event) => {
+      const popupLink = event.target.closest("[data-job-popup-link]");
+      if (popupLink) {
+        if (event.defaultPrevented) return;
+        if (event.button !== 0) return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const routeUrl = popupLink.dataset.browserWindowRoute;
+        const fallbackUrl = popupLink.dataset.openUrl || "";
+        if (!routeUrl || !fallbackUrl) return;
+        event.preventDefault();
+        window.resumeJobMonitor.openJobBrowserWindow(routeUrl, fallbackUrl, {
+          onMessage: renderMessage,
+        });
+        return;
+      }
+
+      const sortLink = event.target.closest("#jobs-table .table-sort-link");
+      if (!sortLink) return;
+      if (event.defaultPrevented) return;
+      if (event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const url = sortLink.getAttribute("href");
+      if (!url) return;
+      event.preventDefault();
+      loadJobsView(url);
+    });
+
+    document.addEventListener("submit", async (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+
+      if (form.matches("#jobs-filters form[method='get'], #jobs-filters form[method='GET']")) {
+        event.preventDefault();
+        persistJobsKeywordFiltersFromForm(form);
+        await loadJobsView(buildJobsViewUrl(form));
+        return;
+      }
+
+      if (form.matches("[data-job-action-form]")) {
+        event.preventDefault();
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton) {
+          submitButton.disabled = true;
+        }
+        try {
+          const data = await submitJobAction(form);
+          await loadJobsView(window.location.href, { pushHistory: false });
+          renderMessage(data.message || "操作已完成。");
+        } catch (error) {
+          console.error(error);
+          renderMessage(
+            error instanceof Error ? error.message : runtimeText("requestFailed", { status: "unknown" }, "请求失败，请查看终端日志。"),
+          );
+        } finally {
+          if (submitButton) {
+            submitButton.disabled = false;
+          }
+        }
+        return;
+      }
+
+      if (!form.matches("[data-job-apply-form]")) return;
+
+      event.preventDefault();
+      const submitButton = form.querySelector('button[type="submit"]');
+      let nativeFallbackTriggered = false;
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+      try {
+        const data = await submitJobAction(form);
+        await loadJobsView(window.location.href, { pushHistory: false });
+        renderMessage(data.message || "操作已完成。");
+      } catch (error) {
+        console.error(error);
+        renderMessage(
+          window.resumeJobMonitor?.translateText?.("异步提交失败，正在改用普通提交。") ||
+            "异步提交失败，正在改用普通提交。",
+        );
+        nativeFallbackTriggered = true;
+        submitFormNatively(form);
+      } finally {
+        if (submitButton && !nativeFallbackTriggered) {
+          submitButton.disabled = false;
+        }
+      }
+    });
+
+    window.addEventListener("popstate", () => {
+      if (window.location.pathname !== "/jobs") return;
+      loadJobsView(window.location.href, { pushHistory: false });
+    });
+
+    if (!restorePersistedJobsKeywordFiltersIfNeeded()) {
+      persistJobsKeywordFiltersFromForm();
+      restoreNativeFallbackScrollState();
+      window.history.replaceState({ jobsView: true }, "", window.location.href);
+    }
+  })();
+</script>
+{% endblock %}

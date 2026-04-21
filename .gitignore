@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+
+# Virtual environments
+.venv
+
+# Runtime data
+data/*.db
+data/*.json
+data/workspaces/
+!data/.gitkeep
+
+# Local secrets
+config/proxies.local.txt
+.env
+
+# Git and editor noise
+.DS_Store
+.coverage
+htmlcov/

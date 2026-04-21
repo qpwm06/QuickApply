@@ -1,0 +1,901 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section" id="job-workspace">
+  <div class="section-card workbench-hero">
+    <div class="section-card-header workbench-hero-head">
+      <div>
+        <a href="{{ url_for('jobs_page') }}" class="back-link">← 返回 Jobs</a>
+        <p class="section-kicker">Tailor Workspace</p>
+        <h3>{{ job.title }}</h3>
+        <p class="row-subtitle workbench-hero-subtitle">
+          {{ job.company }} · {{ job.location_text or "地点未注明" }} · {{ job.source_site|replace("_", " ")|title }}
+        </p>
+      </div>
+
+      <div class="hero-meta-panel">
+        <div class="meta-pills-wrap">
+          <span class="meta-pill">匹配分 {{ "%.1f"|format(job.score) }}</span>
+          <span class="meta-pill">{{ job_country }}</span>
+          <span class="meta-pill">{{ workspace.workspace_label }}</span>
+          {% if job.date_posted %}
+          <span class="meta-pill">发布 {{ job.date_posted|localtime("%Y-%m-%d") }}</span>
+          {% endif %}
+        </div>
+        <div class="form-actions">
+          <button
+            type="button"
+            class="ghost-button"
+            id="open-job-side"
+            data-open-url="{{ job.job_url or url_for('job_preview', job_id=job.id) }}"
+            data-browser-window-route="{{ url_for('open_job_browser_window', job_id=job.id) }}"
+          >岗位描述窗口</button>
+          {% if job.job_url %}
+          <a href="{{ job.job_url }}" class="primary-link" target="_blank" rel="noreferrer">新标签打开职位页</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="history-hero-card workspace-summary-card">
+      <div class="section-card-header compact-card-header">
+        <div>
+          <p class="section-kicker">Workspace Summary</p>
+          <h3>当前工作区按职位汇总，不再把每次 run 堆成主视图</h3>
+        </div>
+        <div class="meta-pills-wrap">
+          <span class="meta-pill" id="workspace-summary-label">{{ workspace_summary.workspace_label }}</span>
+          {% if workspace_summary.base_resume_name %}
+          <span class="meta-pill small-pill wrap-anywhere" id="workspace-summary-template-pill">{{ workspace_summary.base_resume_name }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="workspace-summary-grid">
+        <article class="mini-surface mini-surface-compact">
+          <div class="mini-surface-head">
+            <span>累计运行</span>
+          </div>
+          <p class="mini-surface-text" id="workspace-summary-run-count">{{ workspace_summary.run_count }}</p>
+          <p class="row-subtitle">同一职位工作区内的总 Tailor 次数</p>
+        </article>
+
+        <article class="mini-surface mini-surface-compact">
+          <div class="mini-surface-head">
+            <span>最近状态</span>
+          </div>
+          <div class="history-line-top">
+            <span class="status-pill status-{{ workspace_summary.latest_status or 'pending' }}" id="workspace-summary-status">
+              {{ workspace_summary.latest_status or "idle" }}
+            </span>
+            <span class="meta-pill small-pill" id="workspace-summary-step">{{ workspace_summary.latest_step_label or "尚未开始" }}</span>
+          </div>
+          <p class="row-subtitle">主视图只看最新一次状态</p>
+        </article>
+
+        <article class="mini-surface mini-surface-compact">
+          <div class="mini-surface-head">
+            <span>最近更新时间</span>
+          </div>
+          <p class="mini-surface-text wrap-anywhere" id="workspace-summary-updated-at">
+            {{ workspace_summary.latest_updated_at|localtime("%Y-%m-%d %H:%M:%S %Z") if workspace_summary.latest_updated_at else "暂无" }}
+          </p>
+          <p class="row-subtitle">用于判断是否需要重新生成建议</p>
+        </article>
+
+        <article class="mini-surface mini-surface-compact">
+          <div class="mini-surface-head">
+            <span>最近 Session</span>
+          </div>
+          <p class="mini-surface-text mono-copy wrap-anywhere" id="workspace-summary-session-id">
+            {{ workspace_summary.latest_session_id or "暂无 session id" }}
+          </p>
+          <p class="row-subtitle">保持当前工作区与 session 对齐</p>
+        </article>
+      </div>
+
+      <article class="message-surface workspace-summary-message top-space-sm">
+        <div class="mini-surface-head">
+          <span>最近消息</span>
+        </div>
+        <p class="message-surface-text wrap-anywhere" id="workspace-summary-message">
+          {{ workspace_summary.latest_message or "暂无" }}
+        </p>
+      </article>
+
+      <details class="fold-card top-space-sm">
+        <summary>
+          <span>最近几次 run</span>
+          <span class="row-subtitle" id="session-history-summary-count">默认折叠，累计 {{ workspace_summary.run_count }} 次</span>
+        </summary>
+        <div class="history-compact-list" id="session-history">
+          {% for run in history_runs %}
+          <div class="history-line">
+            <div class="history-line-main">
+              <div class="history-line-top">
+                <span class="history-run-id">#{{ run.id }}</span>
+                <span class="status-pill status-{{ run.status }}">{{ run.status }}</span>
+                <span class="meta-pill small-pill">{{ run.step_label }}</span>
+                {% if run.base_resume_name %}
+                <span class="meta-pill small-pill wrap-anywhere">{{ run.base_resume_name }}</span>
+                {% endif %}
+              </div>
+              <p class="history-line-message wrap-anywhere">{{ run.last_message or "暂无摘要。" }}</p>
+            </div>
+            <div class="history-line-side">
+              <span>{{ run.updated_at|localtime("%Y-%m-%d %H:%M %Z") if run.updated_at else "暂无" }}</span>
+              {% if run.session_id %}
+              <span class="mono-copy wrap-anywhere">{{ run.session_id[:8] }}...</span>
+              {% endif %}
+            </div>
+          </div>
+          {% else %}
+          <div class="empty-state compact-empty-state">还没有 session 记录。</div>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="content-section workbench-layout" id="job-console">
+  <div class="workbench-main">
+    <section class="section-card" id="job-advice">
+      <div class="section-card-header">
+        <div>
+          <p class="section-kicker">Tailor Workspace</p>
+          <h3>把输入、Session、建议摘要和发送区收进同一个工作台</h3>
+          <p class="row-subtitle">修改建议会回填右侧发送区，但不会自动重建现有 Session。</p>
+        </div>
+      </div>
+
+      {% set session_pill_class = 'succeeded' if page_payload.session.status == 'ready' else 'running' if page_payload.session.status == 'establishing' else 'failed' if page_payload.session.status == 'failed' else 'pending' %}
+      {% set revision_advice_skill = page_payload.skills.revision_advice %}
+      {% set session_send_skill = page_payload.skills.session_send %}
+
+      <form method="post" action="{{ url_for('save_tailor_workspace', job_id=job.id) }}" id="workspace-form" class="editor-form" data-async-post>
+        <input type="hidden" name="base_resume_path" id="base-resume-path" value="{{ workspace.base_resume_path }}" />
+
+        <section class="workspace-inputs-card top-space-sm">
+          <div class="workspace-edit-row">
+            <div class="workspace-row-head">
+              <div>
+                <p class="section-kicker">编辑输入文件</p>
+                <h3>role.md 与 user_notes.md 默认折叠</h3>
+                <p class="row-subtitle">先维护输入，再用一键生成复用或建立当前 Session，并刷新修改建议。</p>
+              </div>
+              <div class="form-actions split-actions compact-toolbar-actions">
+                <div class="list-actions">
+                  <button type="submit" class="ghost-button">保存工作区</button>
+                  <button
+                    type="submit"
+                    class="primary-button"
+                    formaction="{{ url_for('run_tailor_advice', job_id=job.id) }}"
+                  >
+                    一键生成
+                  </button>
+                </div>
+              </div>
+            </div>
+            <details class="fold-card input-fold-card">
+              <summary>
+                <span>展开 role.md 和 user_notes.md</span>
+                <span class="row-subtitle">默认收起，避免 Tailor 工作台被输入区撑开</span>
+              </summary>
+              <div class="workspace-edit-grid">
+                <label>
+                  role.md
+                  <textarea name="role_markdown" id="role-markdown" rows="16">{{ workspace.role_markdown }}</textarea>
+                </label>
+
+                <label>
+                  user_notes.md
+                  <textarea name="user_notes" id="user-notes" rows="16">{{ workspace.user_notes }}</textarea>
+                </label>
+              </div>
+            </details>
+          </div>
+
+          <article class="markdown-card compact-markdown-card top-space-sm">
+            <div class="panel-toolbar markdown-toolbar">
+              <div class="markdown-card-head">
+                <span class="markdown-card-kicker">修改建议摘要</span>
+                <strong class="markdown-card-title">resume_revision_advice.md</strong>
+                <p class="row-subtitle">重新生成时会优先读取当前 final tex；如果还没有 final tex，才回退模板副本。</p>
+              </div>
+              <div class="markdown-toolbar-side">
+                <span class="status-pill status-{{ session_pill_class }}" id="revision-advice-session-pill">
+                  {% if page_payload.session.status == "ready" %}
+                  已建立 Session
+                  {% elif page_payload.session.status == "establishing" %}
+                  Session 建立中
+                  {% elif page_payload.session.status == "failed" %}
+                  Session 建立失败
+                  {% else %}
+                  Session 未建立
+                  {% endif %}
+                </span>
+                <span class="meta-pill" id="revision-advice-source-label">{{ revision_advice_source_label }}</span>
+                <span class="meta-pill" id="revision-advice-updated-at">
+                  {{ revision_advice_updated_at|localtime("%Y-%m-%d %H:%M:%S %Z") if revision_advice_updated_at else "尚未生成" }}
+                </span>
+                <a href="{{ revision_advice_skill.detail_url }}" class="ghost-link">查看 skill</a>
+                <button
+                  type="submit"
+                  class="ghost-button"
+                  formaction="{{ revision_advice_skill.reveal_url }}"
+                >
+                  打开 skill 文件
+                </button>
+                <button
+                  type="submit"
+                  class="ghost-button"
+                  formaction="{{ url_for('run_tailor_revision_advice', job_id=job.id) }}"
+                >
+                  重新生成修改建议
+                </button>
+              </div>
+            </div>
+            <div
+              id="revision-advice-text"
+              class="markdown-preview compact-markdown-preview"
+              data-placeholder="尚未生成修改建议。"
+              data-html="{{ revision_advice_html|e }}"
+              aria-live="polite"
+            >{{ revision_advice_html|safe }}</div>
+          </article>
+
+          <section class="section-card instruction-card top-space-sm">
+            <div class="section-card-header">
+              <div>
+                <p class="section-kicker">Session Input</p>
+                <h3>发送给 Session 的信息</h3>
+                <p class="row-subtitle">修改建议会把结构化 Markdown 填到这里；你可以直接改，再发送到同一个 Session。</p>
+              </div>
+              <div class="meta-pills-wrap">
+                <span class="meta-pill" id="session-instruction-updated-at">
+                  {{ session_instruction_updated_at|localtime("%Y-%m-%d %H:%M:%S %Z") if session_instruction_updated_at and session_instruction_text.strip() else "尚未生成" }}
+                </span>
+                <a href="{{ session_send_skill.detail_url }}" class="ghost-link">查看 skill</a>
+                <button
+                  type="submit"
+                  class="ghost-button"
+                  formaction="{{ session_send_skill.reveal_url }}"
+                >
+                  打开 skill 文件
+                </button>
+              </div>
+            </div>
+
+            <div class="session-instruction-grid">
+              <label class="latex-form session-input-editor">
+                session_instruction.md
+                <textarea
+                  name="instruction_text"
+                  id="instruction-text"
+                  rows="16"
+                  placeholder="生成修改建议后，这里会自动填入可直接发给 Codex session 的结构化 Markdown。"
+                >{{ session_instruction_text }}</textarea>
+              </label>
+
+              <article class="markdown-card compact-markdown-card session-instruction-preview-card">
+                <div class="panel-toolbar markdown-toolbar">
+                  <div class="markdown-card-head">
+                    <span class="markdown-card-kicker">Markdown Preview</span>
+                    <strong class="markdown-card-title">当前发送内容预览</strong>
+                    <p class="row-subtitle">这里直接按 Markdown 渲染，方便确认标题层级和 bullet 结构。</p>
+                  </div>
+                </div>
+                <div
+                  id="session-instruction-preview"
+                  class="markdown-preview compact-markdown-preview"
+                  data-placeholder="尚未生成发送内容。"
+                  data-html="{{ session_instruction_html|e }}"
+                >{{ session_instruction_html|safe }}</div>
+              </article>
+            </div>
+          </section>
+
+          <article class="session-control-card top-space-sm">
+            <div class="session-control-head">
+              <div>
+                <p class="section-kicker">Codex Session</p>
+                <h3>所有建议生成和最终改稿都复用同一个 Session</h3>
+                <p class="row-subtitle">先确保 Session 可用，再把右侧这段 Markdown 发送进去修改最终稿。</p>
+              </div>
+              <span class="status-pill status-{{ session_pill_class }}" id="session-ready-pill">
+                {% if session_status == "ready" %}
+                已建立
+                {% elif session_status == "establishing" %}
+                建立中
+                {% elif session_status == "failed" %}
+                建立失败
+                {% else %}
+                尚未建立
+                {% endif %}
+              </span>
+            </div>
+
+            <div class="session-primary-row">
+              <button
+                type="submit"
+                class="ghost-button"
+                formaction="{{ url_for('start_tailor_session', job_id=job.id) }}"
+              >
+                恢复 / 重建 Session
+              </button>
+
+              <article class="mini-surface mini-surface-compact">
+                <div class="mini-surface-head">
+                  <span>Session 状态</span>
+                </div>
+                <p class="mini-surface-text wrap-anywhere" id="session-status-text">
+                  {% if session_status == "ready" %}
+                  已建立
+                  {% elif session_status == "establishing" %}
+                  建立中
+                  {% elif session_status == "failed" %}
+                  建立失败
+                  {% else %}
+                  尚未建立
+                  {% endif %}
+                </p>
+                <p class="row-subtitle mono-copy wrap-anywhere" id="session-id-text">
+                  {{ session_id or "暂无 session id" }}
+                </p>
+              </article>
+
+              <article class="mini-surface mini-surface-compact">
+                <div class="mini-surface-head">
+                  <span>建立时间</span>
+                </div>
+                <p class="mini-surface-text wrap-anywhere" id="session-established-at-text">
+                  {{ session_established_at|localtime("%Y-%m-%d %H:%M:%S %Z") if session_established_at else "暂无" }}
+                </p>
+                <p class="row-subtitle wrap-anywhere" id="session-ready-text">
+                  {% if final_prompt_available %}
+                  当前 session 已可直接接收当前发送区内容。
+                  {% else %}
+                  修改建议不会自动建 Session；需要时请手动建立，或继续复用已有 ready session。
+                  {% endif %}
+                </p>
+              </article>
+            </div>
+
+            <div class="session-secondary-row">
+              <button
+                type="submit"
+                class="ghost-button"
+                formaction="{{ url_for('open_tailor_workspace_in_finder', job_id=job.id) }}"
+                id="open-finder-submit"
+                {% if not page_payload.workspace.open_finder_available %}disabled{% endif %}
+              >
+                打开 Finder 工作区
+              </button>
+              <button
+                type="submit"
+                class="ghost-button"
+                formaction="{{ url_for('reveal_tailor_artifact_in_finder', job_id=job.id, artifact_key='session_instruction') }}"
+                id="session-file-submit"
+                {% if not page_payload.session_instruction.ready %}disabled{% endif %}
+              >
+                打开 Finder 文件
+              </button>
+              <button
+                type="submit"
+                class="primary-button"
+                formaction="{{ url_for('run_tailor_final_prompt', job_id=job.id) }}"
+                id="session-prompt-submit"
+                {% if not final_prompt_available or not session_instruction_text.strip() %}disabled{% endif %}
+              >
+                发送建议到 Session
+              </button>
+            </div>
+          </article>
+
+          <details class="fold-card log-fold top-space-sm">
+            <summary>
+              <span>最近 Session 日志</span>
+              <span class="row-subtitle">默认折叠，只在排查卡住或 prompt 失效时再展开</span>
+            </summary>
+            <label class="latex-form">
+              session_prompt.log
+              <textarea id="session-log-text" rows="18" readonly>{{ page_payload.log.session_prompt_log }}</textarea>
+            </label>
+          </details>
+        </section>
+      </form>
+
+      <form
+        method="post"
+        action="{% if latest_run %}{{ url_for('stop_tailor_run', run_id=latest_run.id) }}{% else %}#{% endif %}"
+        id="stop-run-form"
+        data-async-post
+        class="top-space-sm {% if not latest_run or latest_run.status not in ['pending', 'running'] %}hidden{% endif %}"
+      >
+        <div class="form-actions">
+          <button type="submit" class="ghost-button">停止当前任务</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <aside class="workbench-side" id="job-preview">
+    <article class="message-surface fixed-message-surface">
+      <div class="mini-surface-head">
+        <span>最近消息</span>
+      </div>
+      <div class="message-scroll-region">
+        <p class="message-surface-text wrap-anywhere" id="run-message-text">
+          {{ page_payload.run.last_message or page_payload.run.error_text or "暂无" }}
+        </p>
+      </div>
+    </article>
+
+    <section class="section-card preview-card sticky-preview-card">
+      <div class="section-card-header">
+        <div>
+          <p class="section-kicker">PDF Preview</p>
+          <h3>每轮修改后直接确认编译结果，再决定是否继续 vibe</h3>
+        </div>
+        <div class="meta-pills-wrap">
+          <a
+            href="{{ artifact_urls.get('final_pdf', '#') }}"
+            class="primary-link {% if not artifact_urls.get('final_pdf') %}hidden{% endif %}"
+            id="final-pdf-link"
+            target="_blank"
+            rel="noreferrer"
+          >
+            打开 PDF
+          </a>
+          <a
+            href="{{ artifact_urls.get('diff_pdf', '#') }}"
+            class="ghost-link {% if not artifact_urls.get('diff_pdf') %}hidden{% endif %}"
+            id="diff-pdf-link"
+            target="_blank"
+            rel="noreferrer"
+          >
+            打开 Diff
+          </a>
+        </div>
+      </div>
+
+      <div class="pdf-toolbar">
+        <div class="list-actions">
+          <button type="button" class="ghost-button" data-pdf-zoom="80">缩小</button>
+          <button type="button" class="ghost-button" data-pdf-zoom="100">100%</button>
+          <button type="button" class="ghost-button" data-pdf-zoom="125">放大</button>
+        </div>
+        <span class="row-subtitle" id="pdf-zoom-label">PDF 缩放 100%</span>
+      </div>
+
+      {% if final_pdf_ready %}
+      <iframe
+        id="final-pdf-frame"
+        class="pdf-frame"
+        src="{{ artifact_urls.get('final_pdf') }}"
+        title="Final PDF Preview"
+      ></iframe>
+      {% else %}
+      <div class="empty-state" id="pdf-empty-state">当前还没有可预览的 PDF。先建立 session 或手动保存一次 final tex。</div>
+      <iframe id="final-pdf-frame" class="pdf-frame hidden"></iframe>
+      {% endif %}
+    </section>
+  </aside>
+</section>
+
+<script>
+  (() => {
+    const openButton = document.getElementById("open-job-side");
+    if (!openButton) return;
+
+    openButton.addEventListener("click", () => {
+      const routeUrl = openButton.dataset.browserWindowRoute;
+      const fallbackUrl = openButton.dataset.openUrl;
+      if (!routeUrl || !fallbackUrl) return;
+      window.resumeJobMonitor.openJobBrowserWindow(routeUrl, fallbackUrl, {
+        onMessage: renderBanner,
+      });
+    });
+  })();
+</script>
+
+<script>
+  (() => {
+    const pageState = {{ page_payload|tojson }};
+    const banner = document.querySelector(".global-banner");
+    const workspaceForm = document.getElementById("workspace-form");
+    const stopRunForm = document.getElementById("stop-run-form");
+    const revisionAdviceText = document.getElementById("revision-advice-text");
+    const revisionAdviceSourceLabel = document.getElementById("revision-advice-source-label");
+    const revisionAdviceUpdatedAt = document.getElementById("revision-advice-updated-at");
+    const revisionAdviceSessionPill = document.getElementById("revision-advice-session-pill");
+    const sessionStatusText = document.getElementById("session-status-text");
+    const sessionIdText = document.getElementById("session-id-text");
+    const sessionEstablishedAtText = document.getElementById("session-established-at-text");
+    const runMessageText = document.getElementById("run-message-text");
+    const sessionLogText = document.getElementById("session-log-text");
+    const promptSubmit = document.getElementById("session-prompt-submit");
+    const openFinderSubmit = document.getElementById("open-finder-submit");
+    const sessionFileSubmit = document.getElementById("session-file-submit");
+    const instructionText = document.getElementById("instruction-text");
+    const sessionInstructionUpdatedAt = document.getElementById("session-instruction-updated-at");
+    const sessionInstructionPreview = document.getElementById("session-instruction-preview");
+    const pdfFrame = document.getElementById("final-pdf-frame");
+    const pdfEmptyState = document.getElementById("pdf-empty-state");
+    const finalPdfLink = document.getElementById("final-pdf-link");
+    const diffPdfLink = document.getElementById("diff-pdf-link");
+    const pdfZoomButtons = Array.from(document.querySelectorAll("[data-pdf-zoom]"));
+    const pdfZoomLabel = document.getElementById("pdf-zoom-label");
+    const sessionReadyPill = document.getElementById("session-ready-pill");
+    const sessionReadyText = document.getElementById("session-ready-text");
+    const historyRoot = document.getElementById("session-history");
+    const historySummaryCount = document.getElementById("session-history-summary-count");
+    const workspaceSummaryRunCount = document.getElementById("workspace-summary-run-count");
+    const workspaceSummaryStatus = document.getElementById("workspace-summary-status");
+    const workspaceSummaryStep = document.getElementById("workspace-summary-step");
+    const workspaceSummaryUpdatedAt = document.getElementById("workspace-summary-updated-at");
+    const workspaceSummarySessionId = document.getElementById("workspace-summary-session-id");
+    const workspaceSummaryMessage = document.getElementById("workspace-summary-message");
+    const workspaceSummaryTemplatePill = document.getElementById("workspace-summary-template-pill");
+    let currentPdfZoom = "100";
+    let pollTimer = null;
+    let latestPayload = pageState;
+    let sessionInstructionDirty = false;
+    let appliedSessionInstructionStamp = pageState.session_instruction?.updated_at || "";
+
+    function renderBanner(message) {
+      if (!banner || !message) return;
+      banner.textContent = message;
+      banner.hidden = false;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function setText(node, text, fallback = "") {
+      if (!node) return;
+      const value = String(text ?? "").trim() || fallback;
+      node.textContent = value;
+      node.title = value;
+    }
+
+    function humanizeSessionStatus(status) {
+      if (status === "ready") return "已建立";
+      if (status === "establishing") return "建立中";
+      if (status === "failed") return "建立失败";
+      return "尚未建立";
+    }
+
+    function sessionStatusTone(status) {
+      if (status === "ready") return "succeeded";
+      if (status === "establishing") return "running";
+      if (status === "failed") return "failed";
+      return "pending";
+    }
+
+    function sessionSummaryStatus(status) {
+      if (status === "ready") return "已建立 Session";
+      if (status === "establishing") return "Session 建立中";
+      if (status === "failed") return "Session 建立失败";
+      return "Session 未建立";
+    }
+
+    function setStatusClass(node, prefix, value) {
+      if (!node) return;
+      node.className = `${prefix} status-${value || "pending"}`;
+      node.textContent = value || "pending";
+    }
+
+    function applySessionPill(node, status, { summary = false } = {}) {
+      if (!node) return;
+      node.className = `status-pill status-${sessionStatusTone(status)}`;
+      node.textContent = summary ? sessionSummaryStatus(status) : humanizeSessionStatus(status);
+    }
+
+    function setLinkState(node, href) {
+      if (!node) return;
+      if (href) {
+        node.href = href;
+        node.title = href;
+        node.classList.remove("hidden");
+      } else {
+        node.href = "#";
+        node.title = "";
+        node.classList.add("hidden");
+      }
+    }
+
+    function setButtonDisabled(node, disabled) {
+      if (!node) return;
+      node.disabled = Boolean(disabled);
+    }
+
+    function renderMarkdownHtml(node, html, placeholder) {
+      if (!node) return;
+      const rendered = String(html ?? "").trim();
+      if (rendered) {
+        node.innerHTML = rendered;
+        node.classList.remove("is-empty");
+        return;
+      }
+      node.innerHTML = `<p class="markdown-empty">${escapeHtml(placeholder || node.dataset.placeholder || "暂无内容。")}</p>`;
+      node.classList.add("is-empty");
+    }
+
+    function renderWorkspaceSummary(summary) {
+      if (!summary) return;
+      if (workspaceSummaryRunCount) {
+        workspaceSummaryRunCount.textContent = String(summary.run_count ?? 0);
+      }
+      if (historySummaryCount) {
+        historySummaryCount.textContent = `默认折叠，累计 ${String(summary.run_count ?? 0)} 次`;
+      }
+      setStatusClass(workspaceSummaryStatus, "status-pill", summary.latest_status || "pending");
+      setText(workspaceSummaryStep, summary.latest_step_label || "", "尚未开始");
+      if (workspaceSummaryUpdatedAt) {
+        workspaceSummaryUpdatedAt.textContent = summary.latest_updated_at
+          ? window.resumeJobMonitor.formatLocalTimestamp(summary.latest_updated_at)
+          : "暂无";
+      }
+      setText(workspaceSummarySessionId, summary.latest_session_id || "", "暂无 session id");
+      setText(workspaceSummaryMessage, summary.latest_message || "", "暂无");
+      if (workspaceSummaryTemplatePill) {
+        const templateName = String(summary.base_resume_name || "").trim();
+        workspaceSummaryTemplatePill.textContent = templateName;
+        workspaceSummaryTemplatePill.classList.toggle("hidden", !templateName);
+      }
+    }
+
+    function renderHistory(items) {
+      if (!historyRoot) return;
+      if (!items?.length) {
+        historyRoot.innerHTML = '<div class="empty-state compact-empty-state">还没有 session 记录。</div>';
+        return;
+      }
+      historyRoot.innerHTML = items
+        .map((item) => `
+          <div class="history-line">
+            <div class="history-line-main">
+              <div class="history-line-top">
+                <span class="history-run-id">#${escapeHtml(item.id)}</span>
+                <span class="status-pill status-${escapeHtml(item.status || "pending")}">${escapeHtml(item.status || "pending")}</span>
+                <span class="meta-pill small-pill">${escapeHtml(item.step_label || "尚未开始")}</span>
+                ${item.base_resume_name ? `<span class="meta-pill small-pill wrap-anywhere">${escapeHtml(item.base_resume_name)}</span>` : ""}
+              </div>
+              <p class="history-line-message wrap-anywhere" title="${escapeHtml(item.last_message || "暂无摘要。")}">${escapeHtml(item.last_message || "暂无摘要。")}</p>
+            </div>
+            <div class="history-line-side">
+              <span>${escapeHtml(item.updated_at ? window.resumeJobMonitor.formatLocalTimestamp(item.updated_at) : "暂无")}</span>
+              ${item.session_id ? `<span class="mono-copy wrap-anywhere" title="${escapeHtml(item.session_id)}">${escapeHtml(item.session_id.slice(0, 8))}...</span>` : ""}
+            </div>
+          </div>
+        `)
+        .join("");
+    }
+
+    function buildPdfFrameUrl(baseUrl) {
+      if (!baseUrl) return "";
+      return `${baseUrl}#toolbar=1&navpanes=0&statusbar=0&messages=0&zoom=${encodeURIComponent(currentPdfZoom)}`;
+    }
+
+    function updatePdfZoomLabel() {
+      if (!pdfZoomLabel) return;
+      pdfZoomLabel.textContent = `PDF 缩放 ${currentPdfZoom}%`;
+    }
+
+    function syncSessionInstructionEditor(nextText, nextStamp) {
+      if (!instructionText) return;
+      const normalizedText = String(nextText || "");
+      const normalizedStamp = String(nextStamp || "");
+      const editorText = instructionText.value || "";
+      const hasNewServerVersion = Boolean(normalizedStamp && normalizedStamp !== appliedSessionInstructionStamp);
+      const matchesEditor = editorText === normalizedText;
+      const shouldApply =
+        !sessionInstructionDirty
+        || matchesEditor
+        || hasNewServerVersion;
+
+      if (!shouldApply) return;
+      instructionText.value = normalizedText;
+      sessionInstructionDirty = false;
+      appliedSessionInstructionStamp = normalizedStamp;
+    }
+
+    function renderState(payload) {
+      if (!payload) return;
+      latestPayload = payload;
+      const revisionAdvice = payload.revision_advice || {};
+      const sessionInstruction = payload.session_instruction || {};
+      const session = payload.session || {};
+      const run = payload.run || {};
+      const artifacts = payload.artifacts || {};
+      const logs = payload.log || {};
+      const workspace = payload.workspace || {};
+      const workspaceSummary = payload.workspace_summary || {};
+
+      if (payload.message) renderBanner(payload.message);
+      if (workspace.base_resume_path) {
+        const select = document.getElementById("base-resume-path");
+        if (select) select.value = workspace.base_resume_path;
+      }
+      if (Object.prototype.hasOwnProperty.call(workspace, "role_markdown") && document.activeElement?.id !== "role-markdown") {
+        document.getElementById("role-markdown").value = workspace.role_markdown || "";
+      }
+      if (Object.prototype.hasOwnProperty.call(workspace, "user_notes") && document.activeElement?.id !== "user-notes") {
+        document.getElementById("user-notes").value = workspace.user_notes || "";
+      }
+      if (Object.prototype.hasOwnProperty.call(workspace, "session_instruction_text")) {
+        syncSessionInstructionEditor(
+          workspace.session_instruction_text || "",
+          sessionInstruction.updated_at || "",
+        );
+      }
+
+      renderMarkdownHtml(
+        revisionAdviceText,
+        revisionAdvice.html || "",
+        revisionAdvice.message || revisionAdvice.error || "尚未生成修改建议。",
+      );
+      renderMarkdownHtml(
+        sessionInstructionPreview,
+        sessionInstruction.html || "",
+        "尚未生成发送内容。",
+      );
+      setText(revisionAdviceSourceLabel, revisionAdvice.source_label || "", "尚未生成");
+      revisionAdviceUpdatedAt.textContent = revisionAdvice.updated_at
+        ? window.resumeJobMonitor.formatLocalTimestamp(revisionAdvice.updated_at)
+        : "尚未生成";
+
+      applySessionPill(revisionAdviceSessionPill, session.status, { summary: true });
+      setText(sessionStatusText, humanizeSessionStatus(session.status), "尚未建立");
+      setText(sessionIdText, session.id || "", "暂无 session id");
+      sessionEstablishedAtText.textContent = session.established_at
+        ? window.resumeJobMonitor.formatLocalTimestamp(session.established_at)
+        : "暂无";
+      sessionInstructionUpdatedAt.textContent = sessionInstruction.updated_at
+        ? window.resumeJobMonitor.formatLocalTimestamp(sessionInstruction.updated_at)
+        : "尚未生成";
+      setText(runMessageText, run.last_message || run.error_text || "", "暂无");
+      renderWorkspaceSummary(workspaceSummary);
+      if (stopRunForm) {
+        if (run.id) {
+          stopRunForm.action = `/tailor-runs/${run.id}/stop`;
+        }
+        stopRunForm.classList.toggle("hidden", !["pending", "running"].includes(run.status || ""));
+      }
+
+      const sessionReady = Boolean(session.ready);
+      applySessionPill(sessionReadyPill, session.status);
+      setText(
+        sessionReadyText,
+        sessionReady
+          ? "当前 session 已可直接接收当前发送区内容。"
+          : "修改建议不会自动建 Session；需要时请手动建立，或继续复用已有 ready session。",
+      );
+      promptSubmit.disabled =
+        !sessionReady
+        || !Boolean((instructionText?.value || "").trim() || sessionInstruction.ready)
+        || ["pending", "running"].includes(run.status || "");
+      if (openFinderSubmit) {
+        openFinderSubmit.disabled = !Boolean(workspace.open_finder_available);
+      }
+      if (sessionFileSubmit) {
+        sessionFileSubmit.disabled = !Boolean(sessionInstruction.ready);
+      }
+      sessionLogText.value = logs.session_prompt_log || "";
+
+      if (artifacts.final_pdf_ready && artifacts.final_pdf_url) {
+        pdfFrame.classList.remove("hidden");
+        const nextPdfSrc = buildPdfFrameUrl(artifacts.final_pdf_url);
+        if (pdfFrame.dataset.currentSrc !== nextPdfSrc) {
+          pdfFrame.src = nextPdfSrc;
+          pdfFrame.dataset.currentSrc = nextPdfSrc;
+        }
+        if (pdfEmptyState) pdfEmptyState.hidden = true;
+      } else {
+        pdfFrame.classList.add("hidden");
+        if (pdfEmptyState) pdfEmptyState.hidden = false;
+      }
+
+      setLinkState(finalPdfLink, artifacts.final_pdf_url || "");
+      setLinkState(diffPdfLink, artifacts.diff_pdf_url || "");
+      updatePdfZoomLabel();
+
+      renderHistory(payload.history || []);
+      togglePolling(run.status);
+    }
+
+    async function submitForm(form, submitter) {
+      const body = new FormData(form);
+      if (instructionText && instructionText.form === form && !body.has("instruction_text")) {
+        body.append("instruction_text", instructionText.value);
+      }
+      const action = submitter?.formAction || form.action;
+      const response = await fetch(action, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "quickapply",
+        },
+        body,
+      });
+      const data = await response.json().catch(() => ({}));
+      renderState(data);
+    }
+
+    function attachAsyncSubmit(form) {
+      if (!form) return;
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const submitter = event.submitter;
+        try {
+          await submitForm(form, submitter);
+        } catch (error) {
+          console.error(error);
+          renderBanner("请求失败，请查看终端日志。");
+        }
+      });
+    }
+
+    async function pollState() {
+      try {
+        const response = await fetch(`/api/jobs/${pageState.job.id}/tailor/session`, {
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        renderState(data);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    function togglePolling(status) {
+      const shouldPoll = ["pending", "running"].includes(status || "");
+      if (shouldPoll && !pollTimer) {
+        pollTimer = window.setInterval(pollState, 2500);
+      }
+      if (!shouldPoll && pollTimer) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    pdfZoomButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        currentPdfZoom = button.dataset.pdfZoom || "100";
+        const pdfUrl = finalPdfLink?.href && finalPdfLink.href !== "#" ? finalPdfLink.href : "";
+        if (pdfUrl && pdfFrame) {
+          const nextPdfSrc = buildPdfFrameUrl(pdfUrl);
+          pdfFrame.src = nextPdfSrc;
+          pdfFrame.dataset.currentSrc = nextPdfSrc;
+        }
+        updatePdfZoomLabel();
+      });
+    });
+
+    if (instructionText) {
+      instructionText.addEventListener("input", () => {
+        sessionInstructionDirty = true;
+        const runStatus = latestPayload.run?.status || "";
+        const sessionReady = Boolean(latestPayload.session?.ready);
+        promptSubmit.disabled =
+          !sessionReady
+          || !instructionText.value.trim()
+          || ["pending", "running"].includes(runStatus);
+      });
+    }
+
+    attachAsyncSubmit(workspaceForm);
+    attachAsyncSubmit(stopRunForm);
+    renderState(pageState);
+  })();
+</script>
+{% endblock %}

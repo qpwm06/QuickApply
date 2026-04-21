@@ -1,0 +1,2 @@
+# host:port:username:password
+# us.proxy.example.com:2000:demo-user:demo-password

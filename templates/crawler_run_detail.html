@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set run = run_view.run %}
+<section class="content-section" id="crawler-run-summary">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <a href="{{ url_for('crawler') }}" class="back-link">← 返回 Crawler</a>
+        <p class="section-kicker">Run Summary</p>
+        <h3>{{ run.profile_label }} 的单次抓取结果</h3>
+      </div>
+      <div class="meta-pills-wrap">
+        <span class="meta-pill">开始 {{ run.started_at|localtime("%Y-%m-%d %H:%M:%S %Z") }}</span>
+        <span class="meta-pill">结束 {{ run.finished_at|localtime("%Y-%m-%d %H:%M:%S %Z") if run.finished_at else "进行中" }}</span>
+        <span class="meta-pill">{{ "成功" if run.success else "有异常" }}</span>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <article class="stat-card">
+        <span class="stat-label">抓到职位</span>
+        <strong>{{ run.jobs_seen }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">写入职位</span>
+        <strong>{{ run.jobs_saved }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">异常数量</span>
+        <strong>{{ run_view.warnings|length }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">Query 数量</span>
+        <strong>{{ run_view.query_details|length }}</strong>
+      </article>
+    </div>
+
+    <div class="wide-note">
+      这次抓取请求的站点：
+      {% for site in run_view.requested_sites %}
+      <span class="meta-pill small-pill">{{ site|replace("_", " ")|title }}</span>
+      {% else %}
+      <span class="row-subtitle">未记录</span>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="crawler-run-queries">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">Query Results</p>
+        <h3>按关键词和地点拆开的抓取结果</h3>
+      </div>
+    </div>
+
+    <div class="table-shell">
+      <div class="table-header crawler-query-grid">
+        <span>关键词</span>
+        <span>地点</span>
+        <span>站点</span>
+        <span>结果</span>
+        <span>状态</span>
+      </div>
+      {% for query in run_view.query_details %}
+      <article class="table-row crawler-query-grid">
+        <span>{{ query.search_term or "未记录" }}</span>
+        <span>{{ query.location or "未记录" }}</span>
+        <span>
+          {% if query.sites_seen %}
+          {% for site in query.sites_seen %}
+          {{ site|replace("_", " ")|title }}{% if not loop.last %}, {% endif %}
+          {% endfor %}
+          {% elif query.requested_sites %}
+          请求
+          {% for site in query.requested_sites %}
+          {{ site|replace("_", " ")|title }}{% if not loop.last %}, {% endif %}
+          {% endfor %}
+          {% else %}
+          未记录
+          {% endif %}
+        </span>
+        <span>{{ query.row_count }}</span>
+        <span class="{% if query.status == 'error' %}run-warn{% elif query.status == 'ok' %}run-ok{% endif %}">
+          {% if query.status == "ok" %}
+          成功
+          {% elif query.status == "empty" %}
+          空结果
+          {% else %}
+          失败
+          {% endif %}
+          {% if query.error %}
+          · {{ query.error }}
+          {% endif %}
+        </span>
+      </article>
+      {% else %}
+      <div class="empty-state">当前没有结构化 query 结果，通常说明这是旧记录。</div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="crawler-run-warnings">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">Warnings</p>
+        <h3>异常和抓取告警</h3>
+      </div>
+    </div>
+
+    <div class="list-table">
+      {% for warning in run_view.warnings %}
+      <div class="list-row list-row-tight">
+        <div class="list-main">
+          <strong>Warning {{ loop.index }}</strong>
+          <span class="row-subtitle">{{ warning }}</span>
+        </div>
+        <span class="warning-pill">需要关注</span>
+        <span class="row-subtitle">{{ run.started_at|localtime("%m-%d %H:%M %Z") }}</span>
+        <a href="{{ url_for('crawler') }}" class="ghost-link">回到列表</a>
+      </div>
+      {% else %}
+      <div class="empty-state">这次抓取没有记录到 warning。</div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

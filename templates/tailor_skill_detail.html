@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section skill-detail-layout">
+  <article class="section-card skill-detail-hero">
+    <div class="section-card-header">
+      <div>
+        <a href="{{ url_for('job_detail', job_id=job.id) }}" class="back-link">← 返回 Tailor</a>
+        <p class="section-kicker">Tailor Skill</p>
+        <h3>{{ skill_label }}</h3>
+        <p class="row-subtitle">{{ skill_path }}</p>
+      </div>
+      <div class="meta-pills-wrap">
+        <span class="meta-pill">{{ skill_key }}</span>
+        {% if open_finder_available %}
+        <form method="post" action="{{ url_for('reveal_tailor_skill_in_finder', job_id=job.id, skill_key=skill_key) }}" data-native-scroll-restore>
+          <button type="submit" class="ghost-button">打开 Finder 文件</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </article>
+
+  <section class="section-card" id="skill-rendered">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">Rendered</p>
+        <h3>渲染预览</h3>
+        <p class="row-subtitle">这里按 Markdown 渲染，方便检查段落结构、限制条件和指令格式。</p>
+      </div>
+    </div>
+    <div class="markdown-preview skill-markdown-preview">
+      {{ skill_html|safe }}
+    </div>
+  </section>
+
+  <section class="section-card" id="skill-raw">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">Raw</p>
+        <h3>原始文本</h3>
+        <p class="row-subtitle">这里只读显示，便于对照实际文件内容。</p>
+      </div>
+    </div>
+    <label class="latex-form skill-raw-textarea">
+      {{ skill_path.name }}
+      <textarea rows="24" readonly>{{ skill_text }}</textarea>
+    </label>
+  </section>
+</section>
+{% endblock %}

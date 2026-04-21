@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section" id="dashboard-overview">
+  <div class="section-card hero-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">整体信息</p>
+        <h3>抓取、职位、精修任务的统一总览</h3>
+      </div>
+      <div class="quick-actions">
+        <a href="{{ url_for('crawler') }}" class="ghost-link">进入爬虫中心</a>
+        <a href="{{ url_for('jobs_page') }}" class="primary-link">查看 Jobs</a>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <article class="stat-card">
+        <span class="stat-label">职位总数</span>
+        <strong>{{ overview.total_jobs }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">高分职位</span>
+        <strong>{{ overview.strong_matches }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">近 7 天更新</span>
+        <strong>{{ overview.recent_jobs }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">精修任务</span>
+        <strong>{{ tailor_stats.total }}</strong>
+      </article>
+    </div>
+
+    <div class="profile-mini-grid">
+      {% for item in profiles_view %}
+      <article class="mini-surface">
+        <div class="mini-surface-head">
+          <span>{{ item.profile.label }}</span>
+          <span class="mini-badge">{{ item.job_count }}</span>
+        </div>
+        <p class="mini-surface-text">
+          最高 {{ "%.1f"|format(item.best_score) }}
+          {% if item.last_refresh %}
+          · {{ item.last_refresh|localtime("%m-%d %H:%M") }}
+          {% endif %}
+        </p>
+      </article>
+      {% endfor %}
+    </div>
+
+    <div class="meta-pills-wrap">
+      {% for item in source_site_overview %}
+      <span class="meta-pill">
+        {{ item.source_site|replace("_", " ")|title }} · {{ item.job_count }}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="dashboard-jobs">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">最近高分职位</p>
+        <h3>从总览直接看到值得先投的岗位</h3>
+      </div>
+      <a href="{{ url_for('jobs_page') }}" class="ghost-link">全部 Jobs</a>
+    </div>
+
+    {% if featured_jobs %}
+    <div class="list-table">
+      {% for item in featured_jobs %}
+      <article class="list-row">
+        <div class="list-main">
+          <a href="{{ url_for('job_detail', job_id=item.job.id) }}" class="row-title">{{ item.job.title }}</a>
+          <p class="row-subtitle">{{ item.job.company }} · {{ item.job.location_text or "地点未注明" }}</p>
+        </div>
+        <div class="list-meta">
+          <span class="meta-pill small-pill">{{ item.job.profile_label }}</span>
+          <span class="meta-pill small-pill">{{ item.job.source_site|replace("_", " ")|title }}</span>
+        </div>
+        <div class="list-score">{{ "%.1f"|format(item.job.score) }}</div>
+        <div class="list-actions">
+          <a href="{{ url_for('job_detail', job_id=item.job.id) }}" class="primary-link">简历精修</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">当前还没有可展示的高分职位。</div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="content-section two-column-grid" id="dashboard-refresh">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">最近抓取</p>
+        <h3>看抓取成效和是否被站点限制</h3>
+      </div>
+      <a href="{{ url_for('crawler') }}" class="ghost-link">去爬虫中心</a>
+    </div>
+
+    <div class="table-card">
+      {% for run in refresh_runs %}
+      <div class="table-line">
+        <span>{{ run.profile_label }}</span>
+        <span>抓到 {{ run.jobs_seen }}</span>
+        <span>保存 {{ run.jobs_saved }}</span>
+        <span>{{ run.finished_at|localtime("%m-%d %H:%M") if run.finished_at else "进行中" }}</span>
+      </div>
+      {% else %}
+      <div class="empty-state">还没有抓取记录。</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="section-card" id="dashboard-tailor">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">最近精修</p>
+        <h3>按职位工作区查看最近精修</h3>
+      </div>
+      <a href="{{ url_for('tailor_tasks') }}" class="ghost-link">任务中心</a>
+    </div>
+
+    <div class="table-card">
+      {% for item in recent_tailor_runs %}
+      <div class="table-line table-line-stack">
+        <div>
+          <strong>{{ item.job.title if item.job else "未知职位" }}</strong>
+          <p class="row-subtitle">
+            {{ item.job.company if item.job else "无职位信息" }}
+            · {{ item.workspace_label or "未记录工作区" }}
+          </p>
+        </div>
+        <span class="status-pill status-{{ item.run.status }}">{{ item.run.status }}</span>
+        <span>{{ item.run_count }} 次运行</span>
+        <span>{{ item.run.updated_at|localtime("%m-%d %H:%M") }}</span>
+        <a href="{{ url_for('job_detail', job_id=item.run.job_id) }}" class="ghost-link">查看</a>
+      </div>
+      {% else %}
+      <div class="empty-state">还没有精修任务。</div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section class="content-section" id="dashboard-track">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">投递追踪</p>
+        <h3>最近标记投递的岗位和投递时间</h3>
+      </div>
+      <a href="{{ url_for('application_tracker') }}" class="ghost-link">进入 Tracker</a>
+    </div>
+
+    <div class="meta-pills-wrap">
+      <span class="meta-pill">总追踪 · {{ track_stats.total }}</span>
+      <span class="meta-pill">关联职位 · {{ track_stats.linked }}</span>
+      <span class="meta-pill">手工录入 · {{ track_stats.manual }}</span>
+    </div>
+
+    {% if application_tracks %}
+    <div class="list-table">
+      {% for item in application_tracks %}
+      <article class="list-row list-row-tight">
+        <div class="list-main">
+          {% if item.job %}
+          <a href="{{ url_for('job_detail', job_id=item.job.id) }}" class="row-title">{{ item.track.title }}</a>
+          <p class="row-subtitle">{{ item.track.company }} · {{ item.job.location_text or "地点未注明" }}</p>
+          {% elif item.track.job_url %}
+          <a href="{{ item.track.job_url }}" target="_blank" rel="noreferrer" class="row-title">{{ item.track.title }}</a>
+          <p class="row-subtitle">{{ item.track.company }} · 手工录入</p>
+          {% else %}
+          <span class="row-title">{{ item.track.title }}</span>
+          <p class="row-subtitle">{{ item.track.company }} · 手工录入</p>
+          {% endif %}
+        </div>
+        <div class="list-meta">
+          {% if item.track.profile_label %}
+          <span class="meta-pill small-pill">{{ item.track.profile_label }}</span>
+          {% endif %}
+          <span class="meta-pill small-pill">{{ item.track.source_site|replace("_", " ")|title }}</span>
+          <span class="meta-pill small-pill">{{ item.track_kind_label }}</span>
+        </div>
+        <div class="cell-stack">
+          <span>{{ item.track.applied_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
+          <span class="row-subtitle">投递时间</span>
+        </div>
+        <div class="list-actions">
+          {% if item.job %}
+          <a href="{{ url_for('job_detail', job_id=item.job.id) }}" class="ghost-link">查看</a>
+          {% elif item.track.job_url %}
+          <a href="{{ item.track.job_url }}" target="_blank" rel="noreferrer" class="ghost-link">职位页</a>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">还没有投递追踪记录。</div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

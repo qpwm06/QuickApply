@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CodexTailorResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "produced_files",
+    "warnings"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string"
+    },
+    "produced_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

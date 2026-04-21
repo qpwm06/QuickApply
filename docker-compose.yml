@@ -1,0 +1,19 @@
+services:
+  quickapply:
+    build:
+      context: .
+    container_name: quickapply
+    restart: unless-stopped
+    ports:
+      - "5273:5273"
+    environment:
+      PORT: 5273
+      HOST: 0.0.0.0
+      QUICKAPPLY_CONFIG_PATH: /app/config/search_profiles.yaml
+      QUICKAPPLY_DATABASE_URL: sqlite:///data/jobs.db
+      QUICKAPPLY_WORKSPACES_DIR: data/workspaces
+      QUICKAPPLY_PROXY_FILE: config/proxies.local.txt
+      QUICKAPPLY_CODEX_TIMEOUT_SECONDS: 1200
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config

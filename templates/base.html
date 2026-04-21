@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ page_title or title or "QuickApply" }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body data-page-variant="{{ request.endpoint or current_page }}">
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-mark">RM</div>
+          <div>
+            <p class="brand-kicker">QuickApply</p>
+            <h1 class="brand-title">Career Ops</h1>
+          </div>
+        </div>
+
+        {% set overview_nav = app_nav[:1] %}
+        {% set operation_nav = app_nav[1:] %}
+        <div class="sidebar-group">
+          <div class="sidebar-group-title">总览</div>
+          <nav class="sidebar-nav">
+            {% for item in overview_nav %}
+            <a href="{{ item.href }}" class="sidebar-link {% if item.id == current_page %}active{% endif %}">
+              <span class="sidebar-link-mark">{{ item.short }}</span>
+              <span class="sidebar-link-label">{{ item.label }}</span>
+            </a>
+            {% endfor %}
+          </nav>
+        </div>
+
+        <div class="sidebar-group">
+          <div class="sidebar-group-title">运营</div>
+          <nav class="sidebar-nav">
+            {% for item in operation_nav %}
+            <a href="{{ item.href }}" class="sidebar-link {% if item.id == current_page %}active{% endif %}">
+              <span class="sidebar-link-mark">{{ item.short }}</span>
+              <span class="sidebar-link-label">{{ item.label }}</span>
+            </a>
+            {% endfor %}
+          </nav>
+        </div>
+
+        {% if page_sections %}
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-meta-title">内容管理</div>
+        <nav class="section-nav">
+          {% for section in page_sections %}
+          <a
+            href="#{{ section.id }}"
+            class="section-link"
+            data-section-link="{{ section.id }}"
+          >
+            {{ section.label }}
+          </a>
+          {% endfor %}
+        </nav>
+        {% endif %}
+
+        <div class="sidebar-summary">
+          <span class="sidebar-summary-label" id="sidebar-summary-label">{{ page_eyebrow }}</span>
+          <strong id="sidebar-summary-title">{{ page_title }}</strong>
+          <p id="sidebar-summary-copy">{{ page_subtitle }}</p>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="language-switch" aria-label="界面语言">
+            <button type="button" class="language-option" data-language-option="zh" title="切换到中文">中</button>
+            <button type="button" class="language-option" data-language-option="en" title="Switch to English">EN</button>
+          </div>
+          <div class="sidebar-status {% if refresh_state.running %}running{% endif %}">
+            <span class="status-dot"></span>
+            <span class="sidebar-status-copy" id="sidebar-status-copy">
+              {% if refresh_state.running %}
+              抓取中：{{ refresh_state.profile_label }}
+              {% else %}
+              后台待命
+              {% endif %}
+            </span>
+          </div>
+          <p class="sidebar-note" id="sidebar-timezone-note">当前时区：{{ local_timezone_label }}</p>
+        </div>
+      </aside>
+
+      <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+      <div class="app-main">
+        <header class="page-header">
+          <div class="page-header-main">
+            <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="切换侧栏">
+              ☰
+            </button>
+            <div>
+              <p class="page-eyebrow" id="page-eyebrow">{{ page_eyebrow }}</p>
+              <h2 class="page-title" id="page-title">{{ page_title }}</h2>
+              <p class="page-subtitle" id="page-subtitle">{{ page_subtitle }}</p>
+            </div>
+          </div>
+
+          <div class="page-header-side">
+            {% for badge in page_badges %}
+            <span class="header-badge">{{ badge }}</span>
+            {% endfor %}
+
+            {% for action in page_actions %}
+            <a
+              href="{{ action.href }}"
+              class="page-action-link {% if action.kind == 'ghost' %}ghost-link{% else %}primary-link{% endif %}"
+              {% if action.target_blank %}target="_blank" rel="noreferrer"{% endif %}
+            >
+              {{ action.label }}
+            </a>
+            {% endfor %}
+          </div>
+        </header>
+
+        <section class="global-banner" {% if not message %}hidden{% endif %}>{{ message }}</section>
+
+        <main class="page-content">
+          {% block content %}{% endblock %}
+        </main>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const appTimezone = {{ local_timezone_label|tojson }};
+        const dateFormatter = new Intl.DateTimeFormat("sv-SE", {
+          timeZone: appTimezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        });
+        const timezoneFormatter = new Intl.DateTimeFormat("en-US", {
+          timeZone: appTimezone,
+          timeZoneName: "short",
+        });
+
+        window.resumeJobMonitor = {
+          formatLocalTimestamp(value) {
+            if (!value) return window.resumeJobMonitor?.rt?.("unknownTime") || "未知时间";
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return value;
+
+            const parts = Object.fromEntries(
+              dateFormatter
+                .formatToParts(date)
+                .filter((item) => item.type !== "literal")
+                .map((item) => [item.type, item.value]),
+            );
+            const zonePart = timezoneFormatter
+              .formatToParts(date)
+              .find((item) => item.type === "timeZoneName");
+            return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${zonePart?.value || ""}`.trim();
+          },
+          async openJobBrowserWindow(routeUrl, fallbackUrl, { onMessage } = {}) {
+            const emitMessage = (message) => {
+              if (message && typeof onMessage === "function") {
+                onMessage(message);
+              }
+            };
+
+            try {
+              const response = await fetch(routeUrl, {
+                method: "POST",
+                headers: {
+                  Accept: "application/json",
+                  "X-Requested-With": "quickapply",
+                },
+              });
+              const data = await response.json().catch(() => ({}));
+              const message =
+                data.message ||
+                (response.ok
+                  ? ""
+                  : window.resumeJobMonitor?.rt?.("requestFailed", { status: response.status }) ||
+                    `请求失败（${response.status}）。`);
+              emitMessage(
+                message ||
+                  window.resumeJobMonitor?.rt?.("jobWindowActionCompleted") ||
+                  "岗位描述窗口操作已完成。",
+              );
+              return data;
+            } catch (error) {
+              console.error(error);
+              const fallbackHint = fallbackUrl
+                ? window.resumeJobMonitor?.rt?.("manualOpenFallback", { url: fallbackUrl }) ||
+                  ` 可手动打开：${fallbackUrl}`
+                : "";
+              emitMessage(
+                (
+                  window.resumeJobMonitor?.rt?.("jobWindowOpenFailed") ||
+                  "打开岗位工作窗失败。"
+                )
+                  .concat(fallbackHint)
+                  .trim(),
+              );
+              return null;
+            }
+          },
+        };
+
+        const scrollStorageKey = "quickapply:scroll-restore";
+        const scrollRestoreSelector =
+          "form[data-native-scroll-restore][method='post'], form[data-native-scroll-restore][method='POST']";
+        // 中文注释：全局滚动恢复改成显式启用，避免 Jobs 这类局部异步刷新的表单误写入整页回退位置。
+        document.addEventListener("submit", (event) => {
+          const form = event.target;
+          if (!(form instanceof HTMLFormElement)) return;
+          if (!form.matches(scrollRestoreSelector)) return;
+          sessionStorage.setItem(
+            scrollStorageKey,
+            JSON.stringify({
+              path: window.location.pathname + window.location.search,
+              scrollY: window.scrollY,
+            }),
+          );
+        });
+
+        const pendingRestore = sessionStorage.getItem(scrollStorageKey);
+        if (pendingRestore) {
+          try {
+            const payload = JSON.parse(pendingRestore);
+            const currentPath = window.location.pathname + window.location.search;
+            if (payload.path === currentPath && Number.isFinite(payload.scrollY)) {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  window.scrollTo({ top: payload.scrollY, behavior: "auto" });
+                });
+              });
+            }
+          } catch (error) {
+            console.error(error);
+          }
+          sessionStorage.removeItem(scrollStorageKey);
+        }
+
+        const body = document.body;
+        const sidebar = document.getElementById("sidebar");
+        const sidebarToggle = document.getElementById("sidebar-toggle");
+        const sidebarOverlay = document.getElementById("sidebar-overlay");
+        const sectionLinks = Array.from(document.querySelectorAll("[data-section-link]"));
+        const sections = sectionLinks
+          .map((link) => document.getElementById(link.dataset.sectionLink))
+          .filter(Boolean);
+
+        function openSidebar() {
+          body.classList.add("sidebar-open");
+        }
+
+        function closeSidebar() {
+          body.classList.remove("sidebar-open");
+        }
+
+        sidebarToggle?.addEventListener("click", () => {
+          if (body.classList.contains("sidebar-open")) {
+            closeSidebar();
+          } else {
+            openSidebar();
+          }
+        });
+
+        sidebarOverlay?.addEventListener("click", closeSidebar);
+
+        for (const link of document.querySelectorAll(".sidebar-link, .section-link")) {
+          link.addEventListener("click", () => {
+            if (window.innerWidth <= 980) {
+              closeSidebar();
+            }
+          });
+        }
+
+        if (!sectionLinks.length || !sections.length) {
+          return;
+        }
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            const visible = entries
+              .filter((entry) => entry.isIntersecting)
+              .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+            if (!visible) return;
+
+            for (const link of sectionLinks) {
+              link.classList.toggle(
+                "active",
+                link.dataset.sectionLink === visible.target.id,
+              );
+            }
+          },
+          {
+            rootMargin: "-24% 0px -58% 0px",
+            threshold: [0.15, 0.35, 0.6],
+          },
+        );
+
+        for (const section of sections) {
+          observer.observe(section);
+        }
+      })();
+    </script>
+    <script src="/static/i18n.js"></script>
+  </body>
+</html>
