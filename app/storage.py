@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 import re
@@ -20,6 +20,7 @@ from app.models import (
     TailorRun,
     TailorRunStep,
 )
+from app.time_utils import LOCAL_TIMEZONE, to_local_time
 
 
 def normalize_company_name(company: str) -> str:
@@ -69,6 +70,13 @@ def matches_keyword_filters(
     if include_terms and not any(term in keyword_blob for term in include_terms):
         return False
     return True
+
+
+def _local_date_bucket(value: datetime | None) -> date | None:
+    local_dt = to_local_time(value)
+    if local_dt is None:
+        return None
+    return local_dt.date()
 
 
 class JobRepository:
@@ -693,6 +701,122 @@ class JobRepository:
             if source_kind in stats:
                 stats[source_kind] = count_value
         return stats
+
+    def application_track_daily_counts(
+        self,
+        *,
+        range_key: str = "all",
+        reference_time: datetime | None = None,
+    ) -> dict[str, object]:
+        normalized_reference = reference_time or datetime.now(timezone.utc)
+        if normalized_reference.tzinfo is None:
+            normalized_reference = normalized_reference.replace(tzinfo=timezone.utc)
+        today_local = normalized_reference.astimezone(LOCAL_TIMEZONE).date()
+
+        series_buckets: dict[str, defaultdict[date, int]] = {
+            "applied": defaultdict(int),
+            "crawled": defaultdict(int),
+            "reviewed": defaultdict(int),
+            "dismissed": defaultdict(int),
+        }
+        discovered_dates: list[date] = []
+
+        with Session(self.engine) as session:
+            applied_rows = session.exec(
+                select(ApplicationTrack.applied_at).where(ApplicationTrack.applied_at.is_not(None))
+            ).all()
+            crawled_rows = session.exec(
+                select(JobRecord.first_seen_at).where(JobRecord.first_seen_at.is_not(None))
+            ).all()
+            reviewed_rows = session.exec(
+                select(JobRecord.applied_at, JobRecord.dismissed_at).where(
+                    or_(JobRecord.applied_at.is_not(None), JobRecord.dismissed_at.is_not(None))
+                )
+            ).all()
+            dismissed_rows = session.exec(
+                select(JobRecord.dismissed_at).where(JobRecord.dismissed_at.is_not(None))
+            ).all()
+
+        for applied_at in applied_rows:
+            bucket_date = _local_date_bucket(applied_at)
+            if bucket_date is None:
+                continue
+            series_buckets["applied"][bucket_date] += 1
+            discovered_dates.append(bucket_date)
+
+        for first_seen_at in crawled_rows:
+            bucket_date = _local_date_bucket(first_seen_at)
+            if bucket_date is None:
+                continue
+            series_buckets["crawled"][bucket_date] += 1
+            discovered_dates.append(bucket_date)
+
+        for applied_at, dismissed_at in reviewed_rows:
+            review_candidates = [value for value in (applied_at, dismissed_at) if value is not None]
+            if not review_candidates:
+                continue
+            bucket_date = _local_date_bucket(min(review_candidates))
+            if bucket_date is None:
+                continue
+            series_buckets["reviewed"][bucket_date] += 1
+            discovered_dates.append(bucket_date)
+
+        for dismissed_at in dismissed_rows:
+            bucket_date = _local_date_bucket(dismissed_at)
+            if bucket_date is None:
+                continue
+            series_buckets["dismissed"][bucket_date] += 1
+            discovered_dates.append(bucket_date)
+
+        if range_key == "7d":
+            start_date = today_local - timedelta(days=6)
+            end_date = today_local
+        elif range_key == "30d":
+            start_date = today_local - timedelta(days=29)
+            end_date = today_local
+        elif range_key == "month":
+            start_date = today_local.replace(day=1)
+            end_date = today_local
+        else:
+            if not discovered_dates:
+                return {
+                    "range_key": "all",
+                    "labels": [],
+                    "series": {
+                        "applied": [],
+                        "crawled": [],
+                        "reviewed": [],
+                        "dismissed": [],
+                    },
+                    "totals": {
+                        "applied": 0,
+                        "crawled": 0,
+                        "reviewed": 0,
+                        "dismissed": 0,
+                    },
+                    "max_value": 0,
+                    "has_data": False,
+                }
+            start_date = min(discovered_dates)
+            end_date = max(today_local, max(discovered_dates))
+            range_key = "all"
+
+        labels = [start_date + timedelta(days=index) for index in range((end_date - start_date).days + 1)]
+        series = {
+            key: [series_buckets[key].get(label, 0) for label in labels]
+            for key in series_buckets
+        }
+        totals = {key: sum(values) for key, values in series.items()}
+        max_value = max((max(values) for values in series.values() if values), default=0)
+
+        return {
+            "range_key": range_key,
+            "labels": [label.isoformat() for label in labels],
+            "series": series,
+            "totals": totals,
+            "max_value": max_value,
+            "has_data": any(total > 0 for total in totals.values()),
+        }
 
     def profile_stats(self) -> list[dict[str, object]]:
         statement = (

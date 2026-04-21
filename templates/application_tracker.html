@@ -32,6 +32,106 @@
         <strong>{{ active_filter_label }}</strong>
       </article>
     </div>
+
+    <div
+      class="tracker-chart-card"
+      data-tracker-chart
+      data-tracker-chart-range="{{ tracker_chart.range_key }}"
+      data-default-visible-series="{{ tracker_chart.default_visible_keys|join(',') }}"
+      data-chart-grid-step-count="{{ tracker_chart.grid_step_count }}"
+      data-chart-plot-height="{{ tracker_chart.plot_height }}"
+      data-chart-plot-base-y="{{ tracker_chart.plot_base_y }}"
+    >
+      <script type="application/json" data-chart-payload>{{ tracker_chart.client_payload|tojson }}</script>
+      <div class="tracker-chart-head">
+        <div>
+          <p class="section-kicker">投递数据图</p>
+          <h3>按天看投递、爬取、已查阅和不合适的变化</h3>
+        </div>
+        <div class="tracker-range-switch">
+          {% for range_key, range_label in chart_range_labels.items() %}
+          <a
+            href="{{ chart_range_urls[range_key] }}"
+            class="tracker-range-link {% if chart_range == range_key %}active{% endif %}"
+          >{{ range_label }}</a>
+          {% endfor %}
+        </div>
+      </div>
+
+      <p class="muted-copy tracker-chart-hint">默认只显示投递，点击指标可切换显示。</p>
+
+      <div class="tracker-chart-totals">
+        {% for series in tracker_chart.series %}
+        <button
+          type="button"
+          class="tracker-chart-toggle {% if series.default_visible %}active{% endif %}"
+          data-chart-toggle
+          data-series-key="{{ series.key }}"
+          data-series-total="{{ series.total }}"
+          aria-pressed="{{ 'true' if series.default_visible else 'false' }}"
+        >
+          <span class="tracker-chart-swatch" style="--series-color: {{ series.color }}"></span>
+          <span class="tracker-chart-toggle-label">{{ series.label }}</span>
+          <strong>{{ series.total }}</strong>
+        </button>
+        {% endfor %}
+      </div>
+
+      {% if tracker_chart.has_data %}
+      <div class="tracker-chart-frame">
+        <svg
+          class="tracker-chart-svg"
+          viewBox="0 0 {{ tracker_chart.svg_width }} {{ tracker_chart.svg_height }}"
+          role="img"
+          aria-label="投递数据图"
+        >
+          <g class="tracker-chart-grid">
+            {% for line in tracker_chart.grid_lines %}
+            <line
+              x1="46"
+              y1="{{ line.y }}"
+              x2="{{ tracker_chart.svg_width - 22 }}"
+              y2="{{ line.y }}"
+            ></line>
+            <text x="40" y="{{ line.y + 4 }}" text-anchor="end" data-chart-grid-label="{{ loop.index0 }}">{{ line.value }}</text>
+            {% endfor %}
+          </g>
+
+          <g class="tracker-chart-axis">
+            <line x1="46" y1="278" x2="{{ tracker_chart.svg_width - 22 }}" y2="278"></line>
+            {% for label in tracker_chart.x_labels %}
+            <text x="{{ label.x }}" y="300" text-anchor="middle">{{ label.short_label }}</text>
+            {% endfor %}
+          </g>
+
+          {% for series in tracker_chart.series %}
+          <g
+            data-chart-series
+            data-series-key="{{ series.key }}"
+            class="{% if not series.default_visible %}is-hidden{% endif %}"
+          >
+            {% for bar in series.bars %}
+            <rect
+              class="tracker-chart-bar"
+              x="{{ bar.x }}"
+              y="{{ bar.y }}"
+              width="{{ bar.width }}"
+              height="{{ bar.height }}"
+              rx="4"
+              fill="{{ series.color }}"
+              data-chart-bar-value="{{ bar.value }}"
+            >
+              <title>{{ series.label }} · {{ bar.label }} · {{ bar.value }}</title>
+            </rect>
+            {% endfor %}
+          </g>
+          {% endfor %}
+        </svg>
+      </div>
+      {% else %}
+      <div class="empty-state compact-empty-state">当前范围无数据。</div>
+      {% endif %}
+    </div>
   </div>
 </section>
 
@@ -113,6 +213,7 @@
     </div>
 
     <form method="get" action="{{ url_for('application_tracker') }}" class="toolbar-form compact-toolbar">
+      <input type="hidden" name="chart_range" value="{{ chart_range }}" />
       <label>
         来源类型
         <select name="source_kind">
@@ -150,7 +251,7 @@
 
       <div class="form-actions">
         <button type="submit" class="primary-button">应用筛选</button>
-        <a href="{{ url_for('application_tracker') }}" class="ghost-link">清空筛选</a>
+        <a href="{{ clear_filters_url }}" class="ghost-link">清空筛选</a>
       </div>
     </form>
 
@@ -306,4 +407,154 @@
     {% endif %}
   </div>
 </section>
+
+<script>
+  (() => {
+    const chartRoot = document.querySelector("[data-tracker-chart]");
+    if (!(chartRoot instanceof HTMLElement)) {
+      return;
+    }
+
+    const storageKey = "quickapply:tracker-chart-series";
+    const buttons = Array.from(chartRoot.querySelectorAll("[data-chart-toggle]"));
+    const seriesGroups = Array.from(chartRoot.querySelectorAll("[data-chart-series]"));
+    const gridLabels = Array.from(chartRoot.querySelectorAll("[data-chart-grid-label]"));
+    const payloadNode = chartRoot.querySelector("[data-chart-payload]");
+    const defaultVisible = (chartRoot.dataset.defaultVisibleSeries || "applied")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const knownKeys = buttons
+      .map((button) => button.dataset.seriesKey || "")
+      .filter(Boolean);
+    const gridStepCount = Number(chartRoot.dataset.chartGridStepCount || "4") || 4;
+    const plotHeight = Number(chartRoot.dataset.chartPlotHeight || "0");
+    const plotBaseY = Number(chartRoot.dataset.chartPlotBaseY || "0");
+    let chartPayload = { series: {} };
+
+    if (payloadNode instanceof HTMLScriptElement) {
+      try {
+        chartPayload = JSON.parse(payloadNode.textContent || "{}");
+      } catch (error) {
+        console.warn("Failed to parse tracker chart payload.", error);
+      }
+    }
+
+    function normalizeVisibleKeys(value) {
+      const filtered = value.filter((item) => knownKeys.includes(item));
+      if (filtered.length > 0) {
+        return filtered;
+      }
+      const defaultFiltered = defaultVisible.filter((item) => knownKeys.includes(item));
+      if (defaultFiltered.length > 0) {
+        return defaultFiltered;
+      }
+      return knownKeys.slice(0, 1);
+    }
+
+    function readStoredKeys() {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : null;
+      } catch (error) {
+        console.warn("Failed to restore tracker chart series.", error);
+        return null;
+      }
+    }
+
+    function persistKeys(keys) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(keys));
+      } catch (error) {
+        console.warn("Failed to persist tracker chart series.", error);
+      }
+    }
+
+    function roundToTwo(value) {
+      return Math.round(value * 100) / 100;
+    }
+
+    function computeMaxValue(keys) {
+      let nextMax = 0;
+      for (const key of keys) {
+        const seriesValues = Array.isArray(chartPayload.series?.[key]) ? chartPayload.series[key] : [];
+        for (const value of seriesValues) {
+          nextMax = Math.max(nextMax, Number(value) || 0);
+        }
+      }
+      return Math.max(nextMax, 1);
+    }
+
+    function rerenderChart(keys) {
+      const maxValue = computeMaxValue(keys);
+
+      gridLabels.forEach((labelNode, index) => {
+        labelNode.textContent = String(Math.round(maxValue * index / gridStepCount));
+      });
+
+      for (const barNode of chartRoot.querySelectorAll("[data-chart-bar-value]")) {
+        if (!(barNode instanceof SVGRectElement)) {
+          continue;
+        }
+        const value = Number(barNode.dataset.chartBarValue || "0");
+        if (value <= 0 || plotHeight <= 0) {
+          continue;
+        }
+        let barHeight = plotHeight * value / maxValue;
+        if (0 < barHeight && barHeight < 2) {
+          barHeight = 2;
+        }
+        const y = plotBaseY - barHeight;
+        barNode.setAttribute("y", String(roundToTwo(y)));
+        barNode.setAttribute("height", String(roundToTwo(barHeight)));
+      }
+    }
+
+    let activeKeys = normalizeVisibleKeys(readStoredKeys() || defaultVisible);
+
+    function applyVisibleKeys(keys) {
+      activeKeys = normalizeVisibleKeys(keys);
+      const activeSet = new Set(activeKeys);
+
+      for (const button of buttons) {
+        const key = button.dataset.seriesKey || "";
+        const isActive = activeSet.has(key);
+        button.classList.toggle("active", isActive);
+        button.setAttribute("aria-pressed", String(isActive));
+      }
+
+      for (const group of seriesGroups) {
+        const key = group.dataset.seriesKey || "";
+        group.classList.toggle("is-hidden", !activeSet.has(key));
+      }
+
+      rerenderChart(activeKeys);
+    }
+
+    applyVisibleKeys(activeKeys);
+
+    for (const button of buttons) {
+      button.addEventListener("click", () => {
+        const key = button.dataset.seriesKey || "";
+        if (!key) return;
+
+        const nextKeys = new Set(activeKeys);
+        if (nextKeys.has(key)) {
+          if (nextKeys.size === 1) {
+            return;
+          }
+          nextKeys.delete(key);
+        } else {
+          nextKeys.add(key);
+        }
+
+        const normalizedKeys = normalizeVisibleKeys(Array.from(nextKeys));
+        applyVisibleKeys(normalizedKeys);
+        persistKeys(normalizedKeys);
+      });
+    }
+  })();
+</script>
 {% endblock %}

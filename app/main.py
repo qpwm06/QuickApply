@@ -53,6 +53,19 @@ TRACK_STAGE_LABELS = {
     "paneled": "Paneled",
     "failed": "Failed",
 }
+TRACKER_CHART_RANGE_LABELS = {
+    "all": "总时间",
+    "7d": "7 日",
+    "month": "本月",
+    "30d": "30 日",
+}
+TRACKER_CHART_SERIES = (
+    {"key": "applied", "label": "投递", "color": "#14b8a6"},
+    {"key": "crawled", "label": "爬取", "color": "#0ea5e9"},
+    {"key": "reviewed", "label": "已查阅", "color": "#f59e0b"},
+    {"key": "dismissed", "label": "不合适", "color": "#f97316"},
+)
+TRACKER_CHART_DEFAULT_VISIBLE_SERIES = ("applied",)
 ACTIVE_RUN_STATUSES = {"pending", "running"}
 TERMINAL_RUN_STATUSES = {"succeeded", "failed", "stopped"}
 AD_HOC_STEP_LABELS = {
@@ -952,6 +965,143 @@ def create_app() -> Flask:
                 }
             )
         return views
+
+    def build_application_track_chart_view(*, range_key: str) -> dict[str, object]:
+        chart_data = repository.application_track_daily_counts(
+            range_key=range_key,
+            reference_time=datetime.now(timezone.utc),
+        )
+        svg_height = 320
+        plot_top = 18
+        plot_bottom = 42
+        plot_left = 46
+        plot_right = 22
+        plot_height = svg_height - plot_top - plot_bottom
+        plot_base_y = plot_top + plot_height
+        grid_step_count = 4
+        chart_view = {
+            "range_key": chart_data["range_key"],
+            "has_data": chart_data["has_data"],
+            "series": [
+                {
+                    **series_meta,
+                    "total": int(chart_data["totals"].get(series_meta["key"], 0)),
+                    "default_visible": series_meta["key"] in TRACKER_CHART_DEFAULT_VISIBLE_SERIES,
+                    "bars": [],
+                }
+                for series_meta in TRACKER_CHART_SERIES
+            ],
+            "grid_lines": [],
+            "x_labels": [],
+            "svg_width": 960,
+            "svg_height": svg_height,
+            "default_visible_keys": list(TRACKER_CHART_DEFAULT_VISIBLE_SERIES),
+            "max_value": 0,
+            "plot_top": plot_top,
+            "plot_height": plot_height,
+            "plot_base_y": plot_base_y,
+            "grid_step_count": grid_step_count,
+            "client_payload": {
+                "labels": list(chart_data["labels"]),
+                "series": {
+                    series_meta["key"]: list(chart_data["series"].get(series_meta["key"], []))
+                    for series_meta in TRACKER_CHART_SERIES
+                },
+                "plot_top": plot_top,
+                "plot_height": plot_height,
+                "plot_base_y": plot_base_y,
+                "grid_step_count": grid_step_count,
+            },
+        }
+        if not chart_data["has_data"]:
+            return chart_view
+
+        label_values = chart_data["labels"]
+        day_count = len(label_values)
+        if day_count <= 7:
+            group_step = 78
+        elif day_count <= 14:
+            group_step = 54
+        elif day_count <= 31:
+            group_step = 34
+        elif day_count <= 90:
+            group_step = 22
+        else:
+            group_step = 14
+
+        svg_width = max(960, plot_left + plot_right + day_count * group_step)
+        series_count = len(TRACKER_CHART_SERIES)
+        bar_gap = 2
+        group_width = max(14, group_step - 8)
+        bar_width = max(2, min(12, int((group_width - bar_gap * (series_count - 1)) / series_count)))
+        used_width = bar_width * series_count + bar_gap * (series_count - 1)
+        group_offset = max(0, (group_step - used_width) / 2)
+        default_visible_max = max(
+            (
+                max(chart_data["series"].get(series_key, []), default=0)
+                for series_key in TRACKER_CHART_DEFAULT_VISIBLE_SERIES
+            ),
+            default=0,
+        )
+        max_value = max(int(default_visible_max or chart_data["max_value"]), 1)
+
+        chart_view["svg_width"] = int(svg_width)
+        chart_view["svg_height"] = svg_height
+        chart_view["max_value"] = max_value
+        chart_view["grid_lines"] = [
+            {
+                "value": int(round(max_value * index / grid_step_count)),
+                "y": plot_top + plot_height - (plot_height * index / grid_step_count),
+            }
+            for index in range(grid_step_count + 1)
+        ]
+
+        if day_count <= 10:
+            label_stride = 1
+        elif day_count <= 20:
+            label_stride = 2
+        elif day_count <= 40:
+            label_stride = 4
+        elif day_count <= 90:
+            label_stride = 7
+        else:
+            label_stride = 14
+
+        for index, label in enumerate(label_values):
+            center_x = plot_left + index * group_step + group_step / 2
+            if index % label_stride == 0 or index == day_count - 1:
+                chart_view["x_labels"].append(
+                    {
+                        "x": center_x,
+                        "short_label": label[5:],
+                        "full_label": label,
+                    }
+                )
+
+        series_by_key = {item["key"]: item for item in chart_view["series"]}
+        for series_index, series_meta in enumerate(TRACKER_CHART_SERIES):
+            key = series_meta["key"]
+            counts = chart_data["series"].get(key, [])
+            series_view = series_by_key[key]
+            for day_index, value in enumerate(counts):
+                if value <= 0:
+                    continue
+                bar_height = plot_height * value / max_value
+                if 0 < bar_height < 2:
+                    bar_height = 2
+                x = plot_left + day_index * group_step + group_offset + series_index * (bar_width + bar_gap)
+                y = plot_base_y - bar_height
+                series_view["bars"].append(
+                    {
+                        "x": round(x, 2),
+                        "y": round(y, 2),
+                        "width": bar_width,
+                        "height": round(bar_height, 2),
+                        "label": label_values[day_index],
+                        "value": value,
+                    }
+                )
+        return chart_view
 
     def parse_local_datetime_input(raw_value: str) -> datetime:
         # 中文注释：`datetime-local` 不带时区，统一按芝加哥时间解释，再转成 UTC 入库。
@@ -2164,6 +2314,9 @@ def create_app() -> Flask:
         stage = request.args.get("stage", "").strip()
         if stage not in TRACK_STAGE_OPTIONS:
             stage = ""
+        chart_range = request.args.get("chart_range", "all").strip().lower()
+        if chart_range not in TRACKER_CHART_RANGE_LABELS:
+            chart_range = "all"
         limit = request.args.get("limit", default=50, type=int)
         current_query_params: dict[str, object] = {}
         if source_kind:
@@ -2174,7 +2327,13 @@ def create_app() -> Flask:
             current_query_params["stage"] = stage
         if limit != 50:
             current_query_params["limit"] = limit
+        if chart_range != "all":
+            current_query_params["chart_range"] = chart_range
         current_query_url = url_for("application_tracker", **current_query_params)
+        clear_filters_params: dict[str, object] = {}
+        if chart_range != "all":
+            clear_filters_params["chart_range"] = chart_range
+        clear_filters_url = url_for("application_tracker", **clear_filters_params)
         active_filter_tokens: list[str] = []
         if source_kind == "linked":
             active_filter_tokens.append("关联职位")
@@ -2191,6 +2350,23 @@ def create_app() -> Flask:
             stage=stage or None,
             limit=limit,
         )
+        tracker_chart = build_application_track_chart_view(range_key=chart_range)
+        chart_range_urls = {
+            range_key: url_for(
+                "application_tracker",
+                **(
+                    {
+                        **{
+                            key: value
+                            for key, value in current_query_params.items()
+                            if key != "chart_range"
+                        },
+                        **({"chart_range": range_key} if range_key != "all" else {}),
+                    }
+                ),
+            )
+            for range_key in TRACKER_CHART_RANGE_LABELS
+        }
         track_stats = repository.application_track_stats()
         return render_template(
             "application_tracker.html",
@@ -2218,6 +2394,11 @@ def create_app() -> Flask:
             active_filter_label=active_filter_label,
             limit=limit,
             current_query_url=current_query_url,
+            clear_filters_url=clear_filters_url,
+            chart_range=chart_range,
+            chart_range_labels=TRACKER_CHART_RANGE_LABELS,
+            chart_range_urls=chart_range_urls,
+            tracker_chart=tracker_chart,
             stage_options=TRACK_STAGE_OPTIONS,
             stage_labels=TRACK_STAGE_LABELS,
             default_applied_at_local=format_local_time(

@@ -10,7 +10,7 @@ import yaml
 from sqlmodel import Session, select
 
 import app.config as config_module
-from app.models import JobRecord, RefreshRun, TailorRun
+from app.models import ApplicationTrack, JobRecord, RefreshRun, TailorRun
 
 
 def _write_test_config(tmp_path: Path) -> Path:
@@ -132,6 +132,11 @@ def test_dashboard_routes_render_with_admin_shell(tmp_path, monkeypatch) -> None
     assert "新增画像" in crawler_html
     assert 'data-i18n-placeholder="可留空，自动根据名称生成"' in crawler_html
     assert "https://www.linkedin.com/jobs/search/" in crawler_html
+    assert "供给" not in crawler_html
+    assert "市场层级" not in crawler_html
+    assert "画像供给权重" not in crawler_html
+    assert "打分公式：" not in crawler_html
+    assert 'data-tracker-chart' in tracker_html
     assert 'data-i18n-placeholder="LinkedIn / Indeed / 内推公司"' in tracker_html
     assert 'data-i18n-placeholder="职位或公司"' in tracker_html
     assert "默认折叠" in detail_html
@@ -187,6 +192,8 @@ def test_i18n_script_covers_remaining_ui_shell_fragments() -> None:
     assert "最佳 ([\\d.]+)" in script_text
     assert "时间按 (.+) 解释并保存。" in script_text
     assert "打分公式：" in script_text
+    assert "Application Activity Chart" in script_text
+    assert "No data is available for the selected range." in script_text
 
 
 def test_tailor_skill_detail_page_renders_codex_skill(tmp_path, monkeypatch) -> None:
@@ -2043,6 +2050,214 @@ def test_application_tracker_supports_keyword_and_stage_filters(tmp_path, monkey
         'name="return_to" value="/application-tracker?source_kind=manual&amp;keyword=hidden&amp;stage=interviewed"'
         in filtered_html
     )
+
+
+def test_application_track_daily_counts_build_expected_series(tmp_path, monkeypatch) -> None:
+    config_path = _write_test_config(tmp_path)
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
+
+    import app.main as main_module
+
+    main_module = importlib.reload(main_module)
+    web_app = main_module.create_app()
+    repository = web_app.config["repository"]
+    repository.upsert_jobs(
+        [
+            JobRecord(
+                unique_key="timeline-linked-applied",
+                profile_slug="scientific-ml",
+                profile_label="Scientific ML",
+                search_term='"scientific machine learning"',
+                source_site="linkedin",
+                title="Timeline Applied Scientist",
+                company="Example Labs",
+                location_text="Chicago, IL",
+                city="Chicago",
+                state="IL",
+                country="USA",
+                job_url="https://example.com/jobs/timeline-linked-applied",
+                description="Timeline role.",
+                score=70.0,
+            ),
+            JobRecord(
+                unique_key="timeline-linked-dismissed",
+                profile_slug="scientific-ml",
+                profile_label="Scientific ML",
+                search_term='"scientific machine learning"',
+                source_site="linkedin",
+                title="Timeline Dismissed Scientist",
+                company="Review Labs",
+                location_text="Chicago, IL",
+                city="Chicago",
+                state="IL",
+                country="USA",
+                job_url="https://example.com/jobs/timeline-linked-dismissed",
+                description="Timeline dismissed role.",
+                score=68.0,
+            ),
+        ]
+    )
+    with Session(repository.engine) as session:
+        job_applied = session.exec(
+            select(JobRecord).where(JobRecord.unique_key == "timeline-linked-applied")
+        ).one()
+        job_dismissed = session.exec(
+            select(JobRecord).where(JobRecord.unique_key == "timeline-linked-dismissed")
+        ).one()
+        job_applied_id = job_applied.id or 0
+        job_applied.first_seen_at = datetime(2026, 4, 14, 13, 0, tzinfo=timezone.utc)
+        job_dismissed.first_seen_at = datetime(2026, 4, 15, 13, 0, tzinfo=timezone.utc)
+        job_dismissed.dismissed_at = datetime(2026, 4, 15, 19, 0, tzinfo=timezone.utc)
+        session.add(job_applied)
+        session.add(job_dismissed)
+        session.commit()
+
+    repository.sync_application_track_for_job(
+        job_applied_id,
+        applied_at=datetime(2026, 4, 14, 15, 0, tzinfo=timezone.utc),
+    )
+    repository.create_manual_application_track(
+        ApplicationTrack(
+            source_kind="manual",
+            title="Manual Timeline Scientist",
+            company="Hidden Labs",
+            source_site="career_site",
+            profile_label="Scientific ML",
+            job_url="https://example.com/jobs/manual-timeline",
+            notes="Manual timeline entry",
+            applied_at=datetime(2026, 4, 15, 16, 0, tzinfo=timezone.utc),
+        )
+    )
+
+    reference_time = datetime(2026, 4, 20, 18, 0, tzinfo=timezone.utc)
+    timeline_7d = repository.application_track_daily_counts(
+        range_key="7d",
+        reference_time=reference_time,
+    )
+    timeline_30d = repository.application_track_daily_counts(
+        range_key="30d",
+        reference_time=reference_time,
+    )
+    timeline_month = repository.application_track_daily_counts(
+        range_key="month",
+        reference_time=reference_time,
+    )
+    timeline_all = repository.application_track_daily_counts(
+        range_key="all",
+        reference_time=reference_time,
+    )
+
+    assert timeline_7d["range_key"] == "7d"
+    assert timeline_7d["labels"][0] == "2026-04-14"
+    assert timeline_7d["labels"][-1] == "2026-04-20"
+    assert timeline_7d["totals"] == {
+        "applied": 2,
+        "crawled": 2,
+        "reviewed": 2,
+        "dismissed": 1,
+    }
+    assert timeline_7d["series"]["applied"][0] == 1
+    assert timeline_7d["series"]["applied"][1] == 1
+    assert timeline_7d["series"]["crawled"][0] == 1
+    assert timeline_7d["series"]["crawled"][1] == 1
+    assert timeline_7d["series"]["reviewed"][0] == 1
+    assert timeline_7d["series"]["reviewed"][1] == 1
+    assert timeline_7d["series"]["dismissed"][1] == 1
+    assert timeline_7d["max_value"] == 1
+    assert timeline_30d["labels"][0] == "2026-03-22"
+    assert timeline_month["labels"][0] == "2026-04-01"
+    assert timeline_all["labels"][0] == "2026-04-14"
+    assert timeline_all["labels"][-1] == "2026-04-20"
+
+
+def test_application_tracker_renders_chart_and_preserves_chart_range(tmp_path, monkeypatch) -> None:
+    config_path = _write_test_config(tmp_path)
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
+
+    import app.main as main_module
+
+    main_module = importlib.reload(main_module)
+    web_app = main_module.create_app()
+    repository = web_app.config["repository"]
+    repository.upsert_jobs(
+        [
+            JobRecord(
+                unique_key="tracker-chart-linked-job",
+                profile_slug="scientific-ml",
+                profile_label="Scientific ML",
+                search_term='"scientific machine learning"',
+                source_site="linkedin",
+                title="Tracker Chart Linked Job",
+                company="Linked Labs",
+                location_text="Chicago, IL",
+                city="Chicago",
+                state="IL",
+                country="USA",
+                job_url="https://example.com/jobs/tracker-chart-linked-job",
+                description="Linked job for tracker chart.",
+                score=72.0,
+            )
+        ]
+    )
+    with Session(repository.engine) as session:
+        linked_job = session.exec(
+            select(JobRecord).where(JobRecord.unique_key == "tracker-chart-linked-job")
+        ).one()
+        linked_job_id = linked_job.id or 0
+        linked_job.first_seen_at = datetime(2026, 4, 14, 13, 0, tzinfo=timezone.utc)
+        session.add(linked_job)
+        session.commit()
+
+    repository.sync_application_track_for_job(
+        linked_job_id,
+        applied_at=datetime(2026, 4, 14, 15, 0, tzinfo=timezone.utc),
+    )
+    repository.create_manual_application_track(
+        ApplicationTrack(
+            source_kind="manual",
+            title="Tracker Chart Manual Job",
+            company="Hidden Labs",
+            source_site="career_site",
+            profile_label="Scientific ML",
+            job_url="https://example.com/jobs/tracker-chart-manual-job",
+            notes="Manual chart entry",
+            applied_at=datetime(2026, 4, 15, 16, 0, tzinfo=timezone.utc),
+        )
+    )
+
+    client = web_app.test_client()
+    response = client.get(
+        "/application-tracker?source_kind=manual&keyword=hidden&stage=submitted&chart_range=30d"
+    )
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'data-tracker-chart-range="30d"' in html
+    assert 'name="chart_range" value="30d"' in html
+    assert 'href="/application-tracker?chart_range=30d"' in html
+    assert 'data-series-key="applied"' in html
+    assert 'data-series-total="2"' in html
+    assert 'data-series-key="crawled"' in html
+    assert 'data-series-total="1"' in html
+    assert 'class="tracker-chart-toggle active"' in html
+    assert "Manual Add" not in html
+
+
+def test_application_tracker_invalid_chart_range_falls_back_to_all(tmp_path, monkeypatch) -> None:
+    config_path = _write_test_config(tmp_path)
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
+
+    import app.main as main_module
+
+    main_module = importlib.reload(main_module)
+    web_app = main_module.create_app()
+
+    client = web_app.test_client()
+    response = client.get("/application-tracker?chart_range=not-valid")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'data-tracker-chart-range="all"' in html
 
 
 def test_application_tracker_invalid_stage_filter_falls_back_to_all(tmp_path, monkeypatch) -> None:
