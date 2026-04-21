@@ -106,7 +106,7 @@ Use `Jobs` when you need to cut a broad pool down to an actionable shortlist.
 What you can do here:
 
 - filter by profile, location, include keywords, exclude keywords, score, time window, and country
-- open the original job page
+- open the original job page in one reused dedicated Chrome window
 - exclude bad companies once and keep them out of future review
 - dismiss noisy roles
 - mark applied jobs and remove them from the remaining pool
@@ -123,6 +123,7 @@ Rule of thumb:
 - if the role is weak, dismiss it or exclude the company
 - if the role is strong but not yet ready, keep it in the remaining pool
 - if you actually applied, mark it and continue in `Tracker`
+- if you open multiple roles in sequence, QuickApply keeps refreshing the same dedicated Chrome window so your main browser does not explode into extra tabs
 
 ## 4. Tracker
 

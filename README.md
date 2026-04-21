@@ -27,6 +27,7 @@ It is for targeted application work:
 - **Resume-driven instead of keyword chaos**: profiles and resumes stay close to the actual roles you want.
 - **Local-first instead of SaaS lock-in**: data, workspaces, and generated PDFs live on your machine.
 - **Operations-oriented instead of list-oriented**: Dashboard, Crawler, Jobs, Tracker, and Tailor form one loop.
+- **Dedicated job-page window instead of tab sprawl**: QuickApply reuses one separate Chrome window for job pages, refreshing that window instead of spraying new tabs everywhere.
 - **Safe to share publicly**: this public repo ships with a fully synthetic demo persona, `Taylor Brooks`.
 
 ## 🧭 The Workflow
@@ -70,7 +71,7 @@ The screenshots below mirror the real workflow documented in [docs/workflows.md]
       <br />
       <strong>Jobs</strong>
       <br />
-      <sub>Filter aggressively, open job pages, exclude noise, and launch Tailor.</sub>
+      <sub>Filter aggressively, reuse one dedicated Chrome window for job pages, exclude noise, and launch Tailor.</sub>
     </td>
     <td width="50%" align="center" valign="top">
       <a href="./docs/workflows.md#4-tracker">

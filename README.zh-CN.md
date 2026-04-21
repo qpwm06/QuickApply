@@ -26,6 +26,7 @@ QuickApply 不是泛职位看板，而是面向“定向投递”的本地工作
 - **以简历为中心，不是关键词乱撞**：画像、关键词和默认简历始终围着目标岗位走。
 - **本地优先，不是 SaaS 黑箱**：数据、工作区和生成结果都留在自己机器上。
 - **更像运营台，不像职位清单**：Dashboard、Crawler、Jobs、Tracker、Tailor 是一条完整链路。
+- **岗位页单独占一个 Chrome 窗口，不再疯狂长 tab**：QuickApply 会复用一个独立 Chrome 窗口来打开和刷新岗位页，从而明显减少 tab 数量。
 - **可以放心公开分享**：公开仓库默认使用完全虚构的 demo persona `Taylor Brooks`。
 
 ## 🧭 整体使用链路
@@ -69,7 +70,7 @@ QuickApply 不是泛职位看板，而是面向“定向投递”的本地工作
       <br />
       <strong>Jobs</strong>
       <br />
-      <sub>高强度筛选职位、打开原岗位页、排除噪音公司并进入 Tailor。</sub>
+      <sub>高强度筛选职位、复用独立 Chrome 窗口查看岗位页、排除噪音公司并进入 Tailor。</sub>
     </td>
     <td width="50%" align="center" valign="top">
       <a href="./docs/workflows.zh-CN.md#4-tracker">
