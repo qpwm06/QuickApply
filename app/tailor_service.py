@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
+from app.asset_retriever import write_shortlist_for_workspace
 from app.config import ROOT_DIR, Settings
 from app.location_utils import job_country_label
 from app.models import JobRecord
@@ -45,6 +46,7 @@ TAILOR_ARTIFACT_KEYS = {
     "advice": "tailor_advice.md",
     "revision_advice": "resume_revision_advice.md",
     "session_instruction": "session_instruction.md",
+    "asset_shortlist": "asset_shortlist.md",
     "matching_analysis": "matching_analysis.json",
     "tailored_resume": "cv_tailored.tex",
     "fact_check_report": "fact_check_report.json",
@@ -155,6 +157,7 @@ class TailorWorkspace:
     advice_path: Path
     revision_advice_path: Path
     session_instruction_path: Path
+    asset_shortlist_path: Path
     matching_analysis_path: Path
     tailored_resume_path: Path
     fact_check_report_path: Path
@@ -176,6 +179,7 @@ class TailorWorkspace:
     advice_text: str
     revision_advice_text: str
     session_instruction_text: str
+    asset_shortlist_text: str
     matching_analysis_text: str
     tailored_resume_text: str
     fact_check_text: str
@@ -560,6 +564,7 @@ class TailorService:
         advice_path = workspace_dir / TAILOR_ARTIFACT_KEYS["advice"]
         revision_advice_path = workspace_dir / TAILOR_ARTIFACT_KEYS["revision_advice"]
         session_instruction_path = workspace_dir / TAILOR_ARTIFACT_KEYS["session_instruction"]
+        asset_shortlist_path = workspace_dir / TAILOR_ARTIFACT_KEYS["asset_shortlist"]
         matching_analysis_path = workspace_dir / TAILOR_ARTIFACT_KEYS["matching_analysis"]
         tailored_resume_path = workspace_dir / TAILOR_ARTIFACT_KEYS["tailored_resume"]
         fact_check_report_path = workspace_dir / TAILOR_ARTIFACT_KEYS["fact_check_report"]
@@ -660,6 +665,8 @@ class TailorService:
             selected_resume_path=selected_resume_path,
             final_resume_name=final_resume_path.name,
         )
+        if not pipeline_state.get("asset_baseline_mtime_ns"):
+            pipeline_state["asset_baseline_mtime_ns"] = self._current_asset_mtime_ns()
         pipeline_state_path.write_text(
             json.dumps(pipeline_state, ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -677,6 +684,7 @@ class TailorService:
             advice_path=advice_path,
             revision_advice_path=revision_advice_path,
             session_instruction_path=session_instruction_path,
+            asset_shortlist_path=asset_shortlist_path,
             matching_analysis_path=matching_analysis_path,
             tailored_resume_path=tailored_resume_path,
             fact_check_report_path=fact_check_report_path,
@@ -698,6 +706,7 @@ class TailorService:
             advice_text=_read_text(advice_path),
             revision_advice_text=_read_text(revision_advice_path),
             session_instruction_text=_read_text(session_instruction_path),
+            asset_shortlist_text=_read_text(asset_shortlist_path),
             matching_analysis_text=_read_json_pretty(matching_analysis_path),
             tailored_resume_text=_read_text(tailored_resume_path),
             fact_check_text=_read_json_pretty(fact_check_report_path),
@@ -1096,6 +1105,66 @@ class TailorService:
         shutil.rmtree(candidate)
         return True
 
+    def history_dir_for_run(self, workspace: TailorWorkspace, run_id: int) -> Path:
+        return workspace.workspace_dir / "history" / str(run_id)
+
+    def has_run_snapshot(self, workspace: TailorWorkspace, run_id: int) -> bool:
+        if run_id <= 0:
+            return False
+        history_dir = self.history_dir_for_run(workspace, run_id)
+        if not history_dir.exists():
+            return False
+        return (history_dir / "pipeline_state.json").exists()
+
+    def snapshot_run_history(
+        self, workspace: TailorWorkspace, run_id: int
+    ) -> Path | None:
+        # 中文注释：把当前 final tex / PDF / pipeline_state.json 拷贝到 history/<run_id>/，
+        # 便于后续回滚到该次 run 的最终稿。final_resume.tex 不存在时跳过快照。
+        if run_id <= 0:
+            return None
+        if not workspace.final_resume_path.exists():
+            return None
+        history_dir = self.history_dir_for_run(workspace, run_id)
+        history_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            workspace.final_resume_path,
+            history_dir / workspace.final_resume_path.name,
+        )
+        if workspace.final_resume_pdf_path.exists():
+            shutil.copy2(
+                workspace.final_resume_pdf_path,
+                history_dir / workspace.final_resume_pdf_path.name,
+            )
+        if workspace.pipeline_state_path.exists():
+            shutil.copy2(
+                workspace.pipeline_state_path,
+                history_dir / "pipeline_state.json",
+            )
+        return history_dir
+
+    def restore_run_snapshot(
+        self, workspace: TailorWorkspace, run_id: int
+    ) -> bool:
+        history_dir = self.history_dir_for_run(workspace, run_id)
+        if not history_dir.exists():
+            return False
+        snapshot_resume = history_dir / workspace.final_resume_path.name
+        snapshot_state = history_dir / "pipeline_state.json"
+        if not snapshot_resume.exists() or not snapshot_state.exists():
+            return False
+        shutil.copy2(snapshot_resume, workspace.final_resume_path)
+        snapshot_pdf = history_dir / workspace.final_resume_pdf_path.name
+        if snapshot_pdf.exists():
+            shutil.copy2(snapshot_pdf, workspace.final_resume_pdf_path)
+        shutil.copy2(snapshot_state, workspace.pipeline_state_path)
+        try:
+            self._compile_pdf(workspace.final_resume_path)
+        except Exception:
+            # 中文注释：若编译失败，保留拷回的 .tex 与 .pdf 副本即可，错误以 log 形式留存。
+            pass
+        return True
+
     def artifact_path(self, workspace: TailorWorkspace, artifact_key: str) -> Path | None:
         artifacts = {
             "role": workspace.role_path,
@@ -1215,6 +1284,10 @@ class TailorService:
         pid_callback: Callable[[str, int | None, str], None] | None = None,
     ) -> dict[str, object]:
         pipeline_state = self._load_pipeline_state(workspace)
+        # 中文注释：在分发步骤之前先检测 projects.md / reference.md 是否更新过；如果更新过，
+        # 自动把 matching 之后的步骤拍成 pending，避免拿陈旧 matching_analysis.json 继续跑。
+        pipeline_state = self._check_asset_staleness(workspace, pipeline_state=pipeline_state, save=False)
+        self._save_pipeline_state(workspace, pipeline_state)
         effective_session_id = session_id or str(pipeline_state.get("session_id") or "")
         step_keys: list[str]
 
@@ -1379,6 +1452,11 @@ class TailorService:
             pipeline_state["session_error"] = ""
             if target_step_key == "setup" or not pipeline_state.get("session_established_at"):
                 pipeline_state["session_established_at"] = datetime.now(timezone.utc).isoformat()
+        if target_step_key == "matching":
+            # 中文注释：matching 重新跑过后把 baseline 更新到当前 mtime，stale 提示也同步消除。
+            pipeline_state["asset_baseline_mtime_ns"] = self._current_asset_mtime_ns()
+            pipeline_state["assets_stale"] = False
+            pipeline_state["assets_stale_message"] = ""
         next_step_key = self._next_step_key_from_state(pipeline_state)
         pipeline_state["current_step"] = next_step_key or ""
         self._save_pipeline_state(workspace, pipeline_state)
@@ -1479,6 +1557,9 @@ class TailorService:
             "stopped": False,
             "manual_stop_step": "",
             "manual_stop_message": "",
+            "asset_baseline_mtime_ns": 0,
+            "assets_stale": False,
+            "assets_stale_message": "",
             "artifacts": {
                 "role": TAILOR_ARTIFACT_KEYS["role"],
                 "notes": TAILOR_ARTIFACT_KEYS["notes"],
@@ -1598,6 +1679,14 @@ class TailorService:
             "manual_stop_message": str(state.get("manual_stop_message") or ""),
             "artifacts": artifacts,
             "steps": normalized_steps,
+            "tailor_loop_soft_pass": (
+                state.get("tailor_loop_soft_pass")
+                if isinstance(state.get("tailor_loop_soft_pass"), dict)
+                else None
+            ),
+            "asset_baseline_mtime_ns": int(state.get("asset_baseline_mtime_ns") or 0),
+            "assets_stale": bool(state.get("assets_stale", False)),
+            "assets_stale_message": str(state.get("assets_stale_message") or ""),
             "updated_at": str(state.get("updated_at") or default_state["updated_at"]),
         }
 
@@ -1789,6 +1878,127 @@ class TailorService:
         )
         return final_message.strip(), next_session_id
 
+    def _current_asset_mtime_ns(self) -> int:
+        latest = 0
+        for path in (PROJECT_LIBRARY_PATH, REFERENCE_LIBRARY_PATH):
+            try:
+                mtime_ns = path.stat().st_mtime_ns
+            except OSError:
+                continue
+            if mtime_ns > latest:
+                latest = mtime_ns
+        return latest
+
+    def _refresh_asset_baseline(self, workspace: TailorWorkspace) -> None:
+        pipeline_state = self._load_pipeline_state(workspace)
+        pipeline_state["asset_baseline_mtime_ns"] = self._current_asset_mtime_ns()
+        pipeline_state["assets_stale"] = False
+        pipeline_state["assets_stale_message"] = ""
+        self._save_pipeline_state(workspace, pipeline_state)
+
+    def _check_asset_staleness(
+        self,
+        workspace: TailorWorkspace,
+        *,
+        pipeline_state: dict[str, object] | None = None,
+        save: bool = True,
+    ) -> dict[str, object]:
+        state = pipeline_state if pipeline_state is not None else self._load_pipeline_state(workspace)
+        baseline_raw = state.get("asset_baseline_mtime_ns") or 0
+        try:
+            baseline = int(baseline_raw)
+        except (TypeError, ValueError):
+            baseline = 0
+        current = self._current_asset_mtime_ns()
+        is_stale = bool(baseline) and current > baseline
+
+        if is_stale:
+            stale_message = "projects.md / reference.md 已更新，建议重新跑 matching 与 tailor_loop。"
+            already_marked = bool(state.get("assets_stale"))
+            state["assets_stale"] = True
+            state["assets_stale_message"] = stale_message
+            if not already_marked:
+                # 中文注释：第一次发现 stale 时把 matching 之后的步骤拍成 pending，提示用户重跑。
+                self._mark_steps_pending_from(state, "matching", stale_message)
+        else:
+            state["assets_stale"] = False
+            state["assets_stale_message"] = ""
+            if not baseline:
+                state["asset_baseline_mtime_ns"] = current
+
+        if save and pipeline_state is None:
+            self._save_pipeline_state(workspace, state)
+        return state
+
+    def _normalize_soft_pass_issue(self, issue: object) -> dict[str, str]:
+        if not isinstance(issue, dict):
+            return {}
+        return {
+            "content": str(issue.get("content") or "").strip(),
+            "issue": str(issue.get("issue") or "").strip(),
+            "recommendation": str(issue.get("recommendation") or "").strip(),
+            "source_truth": str(issue.get("source_truth") or "").strip(),
+        }
+
+    def _soft_pass_todos_path(self, workspace: TailorWorkspace) -> Path:
+        return workspace.workspace_dir / "soft_pass_todos.md"
+
+    def _clear_soft_pass_state(self, workspace: TailorWorkspace) -> None:
+        pipeline_state = self._load_pipeline_state(workspace)
+        if "tailor_loop_soft_pass" in pipeline_state:
+            pipeline_state["tailor_loop_soft_pass"] = None
+            self._save_pipeline_state(workspace, pipeline_state)
+        todo_path = self._soft_pass_todos_path(workspace)
+        if todo_path.exists():
+            todo_path.unlink()
+
+    def _record_soft_pass_state(
+        self,
+        workspace: TailorWorkspace,
+        *,
+        attempt: int,
+        issues: list[object],
+        summary: str,
+    ) -> None:
+        normalized = [self._normalize_soft_pass_issue(item) for item in issues]
+        normalized = [entry for entry in normalized if entry]
+        recorded_at = datetime.now(timezone.utc).isoformat()
+        pipeline_state = self._load_pipeline_state(workspace)
+        pipeline_state["tailor_loop_soft_pass"] = {
+            "attempt": attempt,
+            "issue_count": len(normalized),
+            "issues": normalized,
+            "summary": summary,
+            "recorded_at": recorded_at,
+        }
+        self._save_pipeline_state(workspace, pipeline_state)
+
+        lines = [
+            "# Soft-pass TODOs",
+            "",
+            f"- 第 {attempt} 轮 fact-check 仍剩 {len(normalized)} 个 minor 问题，已 soft-pass 继续流水线。",
+            "- 请在 final tex 对应章节首行插入 `% TODO: <issue> -> <recommendation>` 注释，便于人工复核。",
+            "",
+        ]
+        for index, entry in enumerate(normalized, start=1):
+            issue_text = entry.get("issue") or "未说明"
+            recommendation = entry.get("recommendation") or "请回到 projects.md / reference.md 对齐"
+            content_text = entry.get("content") or "未提供"
+            source_truth = entry.get("source_truth") or "请自行核对源文件"
+            lines.extend(
+                [
+                    f"## {index}. {issue_text}",
+                    f"- 涉及内容: {content_text}",
+                    f"- 修复建议: {recommendation}",
+                    f"- 来源事实: {source_truth}",
+                    "",
+                ]
+            )
+        self._soft_pass_todos_path(workspace).write_text(
+            "\n".join(lines).rstrip() + "\n",
+            encoding="utf-8",
+        )
+
     def _run_tailor_loop(
         self,
         *,
@@ -1801,6 +2011,8 @@ class TailorService:
         issues_summary = ""
         loop_messages: list[str] = []
         workspace.step_logs["tailor_loop"].write_text("", encoding="utf-8")
+        # 中文注释：进入 tailor loop 前先清空上一轮残留的 soft-pass 状态，避免新 run 沿用旧 TODO。
+        self._clear_soft_pass_state(workspace)
 
         for attempt in range(1, MAX_TAILOR_LOOP_ATTEMPTS + 1):
             tailor_message, current_session_id = self._run_codex_step(
@@ -1854,6 +2066,12 @@ class TailorService:
             soft_pass_message = (
                 f"Tailor Loop 在第 {MAX_TAILOR_LOOP_ATTEMPTS} 轮 soft-pass："
                 f"剩余 {issue_count} 个 minor 问题，已继续流水线。请人工复核。"
+            )
+            self._record_soft_pass_state(
+                workspace,
+                attempt=MAX_TAILOR_LOOP_ATTEMPTS,
+                issues=issues if isinstance(issues, list) else [],
+                summary=soft_pass_message,
             )
             workspace.step_message_files["tailor_loop"].write_text(
                 "\n".join(loop_messages + [soft_pass_message]) + "\n",
@@ -2410,11 +2628,33 @@ class TailorService:
             specific_instructions=instructions,
         )
 
+    def _ensure_asset_shortlist(
+        self,
+        job: JobRecord,
+        workspace: TailorWorkspace,
+    ) -> Path | None:
+        try:
+            return write_shortlist_for_workspace(
+                job_description=f"{job.title}\n{job.profile_label}\n{job.description}",
+                projects_path=PROJECT_LIBRARY_PATH,
+                reference_path=REFERENCE_LIBRARY_PATH,
+                output_path=workspace.asset_shortlist_path,
+            )
+        except OSError:
+            return None
+
     def _build_matching_prompt(self, job: JobRecord, workspace: TailorWorkspace) -> str:
+        shortlist_path = self._ensure_asset_shortlist(job, workspace)
+        shortlist_block = (
+            f"- {shortlist_path}（基于岗位描述自动检索，作为快速参考；若不全面，仍以 projects.md / reference.md 为准）\n"
+            if shortlist_path is not None and shortlist_path.exists()
+            else ""
+        )
         instructions = (
             "本步骤目标：生成 matching_analysis.json。\n"
             f"输入文件:\n- {workspace.role_path}\n- {workspace.notes_path}\n"
-            f"- {PROJECT_LIBRARY_PATH}\n\n"
+            f"{shortlist_block}"
+            f"- {PROJECT_LIBRARY_PATH}\n- {REFERENCE_LIBRARY_PATH}\n\n"
             f"输出文件:\n- {workspace.matching_analysis_path}\n\n"
             "输出 JSON 必须符合以下 schema（所有 key 都必须出现）:\n"
             "```json\n"
@@ -2554,18 +2794,33 @@ class TailorService:
             if workspace.final_resume_path.exists()
             else ""
         )
+        soft_pass_todos_path = self._soft_pass_todos_path(workspace)
+        soft_pass_input_line = (
+            f"- {soft_pass_todos_path}\n" if soft_pass_todos_path.exists() else ""
+        )
+        soft_pass_instruction = (
+            (
+                "5. 存在 soft_pass_todos.md：tailor_loop 在第 3 轮仍有 ≤2 个 minor 问题。"
+                "请将其中每条作为 `% TODO: <issue> -> <recommendation>` LaTeX 注释插入到 "
+                "final tex 对应章节首行（同一行末尾或紧贴该章节下一行），便于人工复核时定位；"
+                "不要把 TODO 内容直接写进可见的简历正文。\n"
+            )
+            if soft_pass_todos_path.exists()
+            else ""
+        )
         instructions = (
             "本步骤目标：写出最终 tex，不在这一步做整体 vibe review。\n"
             f"输入文件:\n- {workspace.role_path}\n- {workspace.notes_path}\n"
             f"- {workspace.matching_analysis_path}\n- {workspace.tailored_resume_path}\n"
             f"- {workspace.fact_check_report_path}\n- {REFERENCE_LIBRARY_PATH}\n"
-            f"{existing_final}\n"
+            f"{soft_pass_input_line}{existing_final}\n"
             f"输出文件:\n- {workspace.final_resume_path}\n\n"
             "额外要求:\n"
             "1. 需要吸收 fact_check_report.json 的修复建议。\n"
             "2. 可以调整 references/publications，便于用户在 final proof 后继续微调文献。\n"
             "3. 不要生成 PDF；PDF 由本地服务负责编译。\n"
             "4. final message 只总结最终 tex 的重点变化。\n"
+            f"{soft_pass_instruction}"
         )
         return self._build_common_prompt(
             title=TAILOR_STEP_LABELS["final_proof"],

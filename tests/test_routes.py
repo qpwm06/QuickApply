@@ -2104,7 +2104,7 @@ def test_open_job_browser_window_route_returns_fallback_when_chrome_control_fail
     assert "chrome control failed" in payload["message"]
 
 
-def test_open_job_browser_window_route_returns_warning_when_linkedin_expand_fails(tmp_path, monkeypatch) -> None:
+def test_open_job_browser_window_route_dispatches_linkedin_expand_in_background(tmp_path, monkeypatch) -> None:
     config_path = _write_test_config(tmp_path)
     monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
 
@@ -2138,12 +2138,18 @@ def test_open_job_browser_window_route_returns_warning_when_linkedin_expand_fail
 
     def fake_run(cmd, check, capture_output, text):
         calls.append(list(cmd))
-        if len(calls) == 1:
-            return subprocess.CompletedProcess(cmd, 0, stdout="chrome-window-123\n", stderr="")
-        raise subprocess.CalledProcessError(1, cmd, stderr="expand failed")
+        return subprocess.CompletedProcess(cmd, 0, stdout="chrome-window-123\n", stderr="")
+
+    started_threads: list[str] = []
+    real_thread_init = main_module.threading.Thread.__init__
+
+    def tracking_thread_init(self, *args, **kwargs):
+        started_threads.append(kwargs.get("name", ""))
+        real_thread_init(self, *args, **kwargs)
 
     monkeypatch.setattr(main_module.sys, "platform", "darwin")
     monkeypatch.setattr(main_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(main_module.threading.Thread, "__init__", tracking_thread_init)
 
     client = web_app.test_client()
     response = client.post(
@@ -2161,8 +2167,8 @@ def test_open_job_browser_window_route_returns_warning_when_linkedin_expand_fail
     assert payload["opened_url"].startswith("https://www.linkedin.com/jobs/search/?")
     assert "currentJobId=route-browser-window-warning-job" in payload["opened_url"]
     assert payload["site_behavior"] == "linkedin_auto_expand"
-    assert payload["warning"] == "LinkedIn 自动展开附加步骤失败：expand failed"
-    assert "LinkedIn 自动展开附加步骤失败：expand failed" in payload["message"]
+    assert payload.get("warning", "") == ""
+    assert any(name.startswith("linkedin-expand-") for name in started_threads)
     state_path = web_app.config["browser_window_state_path"]
     saved_state = main_module.load_browser_window_state(state_path)
     assert saved_state["window_id"] == "chrome-window-123"

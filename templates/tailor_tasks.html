@@ -114,7 +114,16 @@
         </div>
 
         <div class="cell-stack">
-          <span>{{ "已生成" if item.final_pdf_ready else "暂无" }}</span>
+          <span>
+            {% if item.final_pdf_url %}
+            <a href="{{ item.final_pdf_url }}" target="_blank" rel="noreferrer" class="primary-link">最终 PDF</a>
+            {% else %}
+            最终 PDF：暂无
+            {% endif %}
+            {% if item.diff_pdf_url %}
+            · <a href="{{ item.diff_pdf_url }}" target="_blank" rel="noreferrer" class="ghost-link">查看 Diff</a>
+            {% endif %}
+          </span>
           {% if item.session_id %}
           <span class="row-subtitle mono-copy">{{ item.session_id[:12] }}</span>
           {% elif item.latest_message %}

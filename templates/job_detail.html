@@ -127,6 +127,17 @@
               {% if run.session_id %}
               <span class="mono-copy wrap-anywhere">{{ run.session_id[:8] }}...</span>
               {% endif %}
+              {% if run.has_snapshot and (not latest_run or run.id != latest_run.id) %}
+              <form
+                method="post"
+                action="{{ url_for('restore_tailor_run', run_id=run.id) }}"
+                class="history-restore-form"
+                onsubmit="return confirm('确认把当前 final tex 恢复到 run #{{ run.id }} 的版本？');"
+              >
+                <input type="hidden" name="return_to" value="{{ request.full_path }}" />
+                <button type="submit" class="ghost-button history-restore-button">恢复到此版本</button>
+              </form>
+              {% endif %}
             </div>
           </div>
           {% else %}
@@ -140,6 +151,38 @@
 
 <section class="content-section workbench-layout" id="job-console">
   <div class="workbench-main">
+    {% if assets_stale %}
+    <aside class="section-card assets-stale-alert" id="tailor-assets-stale-alert" style="border-left: 4px solid #2563eb; background: #eff6ff;">
+      <div class="section-card-header">
+        <div>
+          <p class="section-kicker">资料库已更新</p>
+          <h3>projects.md / reference.md 比上次 matching 时间新</h3>
+          <p class="row-subtitle">{{ assets_stale_message or "建议重新跑 matching 与 tailor_loop，确保拿到最新事实。" }}</p>
+        </div>
+      </div>
+    </aside>
+    {% endif %}
+    {% if tailor_loop_soft_pass and tailor_loop_soft_pass.issue_count %}
+    <aside class="section-card soft-pass-alert" id="tailor-soft-pass-alert" data-soft-pass-issue-count="{{ tailor_loop_soft_pass.issue_count }}" style="border-left: 4px solid #d4a017; background: #fff8e1;">
+      <div class="section-card-header">
+        <div>
+          <p class="section-kicker">Soft-pass 待办</p>
+          <h3>Tailor Loop 在第 {{ tailor_loop_soft_pass.attempt }} 轮 soft-pass，剩余 {{ tailor_loop_soft_pass.issue_count }} 个 minor 问题</h3>
+          <p class="row-subtitle">final_proof 会在 final tex 对应章节首行插入 `% TODO:` 注释，请人工复核。</p>
+        </div>
+      </div>
+      <ul class="soft-pass-issue-list">
+        {% for entry in tailor_loop_soft_pass.issues %}
+        <li>
+          <p class="soft-pass-issue-title"><strong>{{ entry.issue or "未说明" }}</strong></p>
+          {% if entry.content %}<p class="row-subtitle wrap-anywhere">涉及内容：{{ entry.content }}</p>{% endif %}
+          {% if entry.recommendation %}<p class="row-subtitle wrap-anywhere">修复建议：{{ entry.recommendation }}</p>{% endif %}
+          {% if entry.source_truth %}<p class="row-subtitle wrap-anywhere">来源事实：{{ entry.source_truth }}</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </aside>
+    {% endif %}
     <section class="section-card" id="job-advice">
       <div class="section-card-header">
         <div>
@@ -659,8 +702,22 @@
         historyRoot.innerHTML = '<div class="empty-state compact-empty-state">还没有 session 记录。</div>';
         return;
       }
+      const latestId = items[0] ? items[0].id : null;
       historyRoot.innerHTML = items
-        .map((item) => `
+        .map((item) => {
+          const showRestore = item.has_snapshot && item.id !== latestId;
+          const restoreUrl = showRestore
+            ? `/tailor-runs/${encodeURIComponent(item.id)}/restore`
+            : "";
+          const returnTo = window.location.pathname + window.location.search;
+          const confirmText = `确认把当前 final tex 恢复到 run #${item.id} 的版本？`;
+          const restoreHtml = showRestore
+            ? `<form method="post" action="${restoreUrl}" class="history-restore-form" onsubmit="return confirm(${JSON.stringify(confirmText)});">`
+              + `<input type="hidden" name="return_to" value="${escapeHtml(returnTo)}" />`
+              + `<button type="submit" class="ghost-button history-restore-button">恢复到此版本</button>`
+              + `</form>`
+            : "";
+          return `
           <div class="history-line">
             <div class="history-line-main">
               <div class="history-line-top">
@@ -674,9 +731,11 @@
             <div class="history-line-side">
               <span>${escapeHtml(item.updated_at ? window.resumeJobMonitor.formatLocalTimestamp(item.updated_at) : "暂无")}</span>
               ${item.session_id ? `<span class="mono-copy wrap-anywhere" title="${escapeHtml(item.session_id)}">${escapeHtml(item.session_id.slice(0, 8))}...</span>` : ""}
+              ${restoreHtml}
             </div>
           </div>
-        `)
+        `;
+        })
         .join("");
     }
 

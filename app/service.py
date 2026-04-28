@@ -8,6 +8,7 @@ from app.config import SearchProfileConfig, Settings
 from app.fetcher import JobSpyFetcher
 from app.job_dedupe import build_job_dedupe_key
 from app.models import JobRecord, RefreshRun
+from app.profile_rules import build_fetched_job_rule_blob, matches_search_profile_rules
 from app.resume_profile import ResumeProfile
 from app.scoring import score_job
 from app.storage import JobRepository
@@ -56,6 +57,9 @@ class JobMonitorService:
 
         scored_records: list[JobRecord] = []
         for job in fetched_jobs:
+            # 中文注释：先按画像自己的硬性关键词护栏过滤，再进入打分。
+            if not matches_search_profile_rules(build_fetched_job_rule_blob(job), profile):
+                continue
             breakdown = score_job(job, self.resume_profile, profile)
             if breakdown.total_score < self.settings.app.min_score_to_store:
                 continue

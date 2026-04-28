@@ -39,6 +39,8 @@ class SearchProfileConfig:
     label: str
     enabled: bool = True
     search_terms: list[str] = field(default_factory=list)
+    exclude_keywords: list[str] = field(default_factory=list)
+    require_any_keywords: list[str] = field(default_factory=list)
     locations: list[str] = field(default_factory=list)
     sites: list[str] = field(
         default_factory=lambda: ["indeed", "linkedin", "zip_recruiter"]
@@ -49,6 +51,8 @@ class SearchProfileConfig:
     default_resume_file: str | None = None
     market_priority: float = 0.6
     search_term_weights: dict[str, float] = field(default_factory=dict)
+    # 中文注释：远程偏好。允许 prefer / neutral / avoid 三档；其他值会在 scoring 里被 normalize 成 neutral。
+    remote_preference: str = "neutral"
 
 
 @dataclass
@@ -149,6 +153,49 @@ def save_search_terms(
             term: existing_weights.get(term, 1.0)
             for term in normalized_terms
         }
+        path.write_text(
+            yaml.safe_dump(raw, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+        return
+
+    raise KeyError(f"profile not found: {profile_slug}")
+
+
+def save_profile_keyword_rules(
+    profile_slug: str,
+    *,
+    exclude_keywords: list[str] | None = None,
+    require_any_keywords: list[str] | None = None,
+    search_term_weights: dict[str, float] | None = None,
+    config_path: Path | None = None,
+) -> None:
+    path, raw = _load_raw_config(config_path)
+    profiles = raw.get("search_profiles") or []
+
+    for profile_raw in profiles:
+        if profile_raw.get("slug") != profile_slug:
+            continue
+        if exclude_keywords is not None:
+            profile_raw["exclude_keywords"] = _normalize_string_list(exclude_keywords)
+        if require_any_keywords is not None:
+            profile_raw["require_any_keywords"] = _normalize_string_list(require_any_keywords)
+        if search_term_weights is not None:
+            existing_terms = list(profile_raw.get("search_terms") or [])
+            normalized_weights: dict[str, float] = {}
+            for term in existing_terms:
+                key = " ".join(str(term).split())
+                if not key:
+                    continue
+                raw_weight = search_term_weights.get(key)
+                if raw_weight is None:
+                    raw_weight = search_term_weights.get(term)
+                try:
+                    weight_value = float(raw_weight) if raw_weight is not None else 1.0
+                except (TypeError, ValueError):
+                    weight_value = 1.0
+                normalized_weights[key] = max(0.0, weight_value)
+            profile_raw["search_term_weights"] = normalized_weights
         path.write_text(
             yaml.safe_dump(raw, sort_keys=False, allow_unicode=True),
             encoding="utf-8",

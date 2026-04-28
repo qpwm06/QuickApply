@@ -19,6 +19,7 @@ from app.config import (
     add_search_profile,
     delete_search_profile,
     load_settings,
+    save_profile_keyword_rules,
     save_profile_locations,
     save_search_terms,
 )
@@ -328,34 +329,93 @@ on run argv
     end if
 
     if targetWindow is missing value then
-      make new window
-      set targetWindow to front window
+      -- 中文注释：捕获 make new window 的返回值，再立刻拿 id 重新解析，
+      -- 双保险确保后续 set URL 的目标始终是这一刻新建出来的窗口，不会因为 Chrome 内部
+      -- 引用漂移或焦点未让出而落到用户原本的窗口（例如承载 /jobs 列表的窗口）。
+      set newlyMadeWindow to make new window
+      set newlyMadeWindowId to (id of newlyMadeWindow as text)
+      set targetWindow to my findWindowById(newlyMadeWindowId)
+      if targetWindow is missing value then
+        error "无法重新解析刚创建的 Chrome 窗口（id=" & newlyMadeWindowId & "）。"
+      end if
       set createdNewWindow to true
     end if
 
     if createdNewWindow then
       set bounds of targetWindow to {targetLeft, targetTop, targetRight, targetBottom}
+      -- 中文注释：某些 Chrome 配置（例如"启动时恢复上次会话"或扩展注入）会让 make new window
+      -- 立刻带回多个 tab。把多余 tab 清掉，再设置 marker / target，避免我们意外覆盖
+      -- 用户的会话恢复内容。
+      repeat while (count of tabs of targetWindow) > 1
+        try
+          close tab 2 of targetWindow
+        on error
+          exit repeat
+        end try
+      end repeat
+    end if
+
+    -- 中文注释：定下 targetWindow 之后立刻锁定它的 id，后续每次写 tab 之前都用 id 重新解析，
+    -- 防止 Chrome 内部引用因为焦点切换 / activate / 用户拖拽而漂移到别的窗口（典型症状：
+    -- 用户原本承载 /jobs 列表的主窗口，第二个 tab 被意外刷成 target URL）。
+    set lockedWindowId to (id of targetWindow as text)
+    set targetWindow to my findWindowById(lockedWindowId)
+    if targetWindow is missing value then
+      error "锁定 Chrome 专用岗位窗口失败（id=" & lockedWindowId & "）。"
+    end if
+    -- 中文注释：写 tab 前再做一次安全断言：如果这个窗口里有任何不被允许的 app tab（例如 /jobs 列表），
+    -- 直接报错让 Python 端走 fallback，绝对不允许覆盖用户主窗口的 tab。
+    if my windowHasUnsafeAppTab(targetWindow, markerUrl, appOrigin) then
+      error "拒绝写入：候选 Chrome 窗口包含未授权的 app tab（id=" & lockedWindowId & "）。"
     end if
 
     set markerTabIndex to my findTabIndexByUrl(targetWindow, markerUrl)
     if markerTabIndex is 0 then
       set markerTabIndex to 1
+      -- 中文注释：写 marker 前再 re-resolve 一次并断言 id，杜绝引用漂移。
+      set targetWindow to my findWindowById(lockedWindowId)
+      if targetWindow is missing value then error "Chrome 专用岗位窗口在写 marker 前丢失。"
+      my assertWindowIdMatches(targetWindow, lockedWindowId)
       set URL of tab markerTabIndex of targetWindow to markerUrl
-      my waitForTabLoad(tab markerTabIndex of targetWindow, 40)
+      -- 中文注释：marker 不需要等到完全加载完。我们靠 lockedWindowId 跟踪窗口身份，
+      -- 后续 firstNonMarkerTabIndex 内部会自己再做一次 loading 等待，避免拿到 about:blank。
+      -- 这里只需短暂让 URL 赋值生效（最多 2 秒），就能继续后续步骤。
+      my waitForTabLoad(tab markerTabIndex of targetWindow, 8)
+      set targetWindow to my findWindowById(lockedWindowId)
+      if targetWindow is missing value then error "Chrome 专用岗位窗口在写 marker 时丢失。"
+      my assertWindowIdMatches(targetWindow, lockedWindowId)
     end if
 
     set targetTabIndex to my firstNonMarkerTabIndex(targetWindow, markerUrl)
     if targetTabIndex is 0 then
+      -- 中文注释：建新 tab 前 re-resolve 一次，并断言；不允许把新 tab 加到别的窗口。
+      set targetWindow to my findWindowById(lockedWindowId)
+      if targetWindow is missing value then error "Chrome 专用岗位窗口在新建 tab 前丢失。"
+      my assertWindowIdMatches(targetWindow, lockedWindowId)
       tell targetWindow to make new tab at end of tabs
+      set targetWindow to my findWindowById(lockedWindowId)
+      if targetWindow is missing value then error "Chrome 专用岗位窗口在新建 tab 后丢失。"
+      my assertWindowIdMatches(targetWindow, lockedWindowId)
       set targetTabIndex to count of tabs of targetWindow
     end if
 
+    -- 中文注释：写最终 URL 前再 re-resolve 一次 + 断言 id，做最后一道防线。
+    set targetWindow to my findWindowById(lockedWindowId)
+    if targetWindow is missing value then error "Chrome 专用岗位窗口在写 target 时丢失。"
+    my assertWindowIdMatches(targetWindow, lockedWindowId)
     set URL of tab targetTabIndex of targetWindow to targetUrl
+    -- 中文注释：写 active tab index 之前同样再校验一次。
+    set targetWindow to my findWindowById(lockedWindowId)
+    if targetWindow is missing value then error "Chrome 专用岗位窗口在 set active tab 时丢失。"
+    my assertWindowIdMatches(targetWindow, lockedWindowId)
     set active tab index of targetWindow to targetTabIndex
-    set index of targetWindow to 1
-    my waitForTabLoad(tab targetTabIndex of targetWindow, 80)
+    -- 中文注释：之前还会把窗口提到 z-order 第 1 位，但这会重排所有 Chrome 窗口的层叠顺序，
+    -- 触发 activate 后 front window 漂移之类的副作用，而 activate 已经能把 Chrome 拉到前台，
+    -- 所以这步直接去掉。
+    -- 中文注释：URL 赋值后 Chrome 已经开始异步加载，HTTP 响应不需要等到 DOMContentLoaded；
+    -- 用户点击到看见窗口跳出的延迟主要就是这段同步等待，去掉之后能从 5-20 秒降到 1 秒级。
 
-    return (id of targetWindow as text)
+    return lockedWindowId
   end tell
 end run
 
@@ -378,15 +438,34 @@ on originFromUrl(rawUrl)
 end originFromUrl
 
 on findWindowById(existingWindowId)
+  -- 中文注释：用 `first window whose id is ...` 返回的 by-id 引用，AppleScript 在每次访问时
+  -- 都会重新按 id 解析，避免之前 `repeat with w in windows` 返回的 `window 3` 这种 by-index
+  -- 引用——一旦 Chrome 因 activate / 用户交互重排窗口顺序，by-index 引用就会悄悄指向别的窗口
+  -- （典型症状：连续点开几个岗位后，主 /jobs 窗口的第 2 个 tab 被改写成岗位详情页）。
   tell application "Google Chrome"
-    repeat with w in windows
-      if (id of w as text) = existingWindowId then
-        return w
-      end if
-    end repeat
+    try
+      set windowIdInt to existingWindowId as integer
+      return (first window whose id is windowIdInt)
+    on error
+      return missing value
+    end try
   end tell
-  return missing value
 end findWindowById
+
+on assertWindowIdMatches(targetWindow, expectedWindowId)
+  -- 中文注释：写 tab 前的最后一道防线。如果 targetWindow 仍指向期望窗口（id 一致）才放行；
+  -- 一旦不等就直接 error，让 Python 端走 fallback，绝对不能把 URL 写到用户主窗口。
+  tell application "Google Chrome"
+    try
+      set actualId to (id of targetWindow as text)
+    on error
+      error "无法读取 Chrome 窗口 id，引用已失效（期望 " & expectedWindowId & "）。"
+    end try
+  end tell
+  if actualId is not expectedWindowId then
+    error "Chrome 窗口引用漂移：期望 id=" & expectedWindowId & "，实际 id=" & actualId & "。"
+  end if
+end assertWindowIdMatches
 
 on findTabIndexByUrl(targetWindow, expectedUrl)
   tell application "Google Chrome"
@@ -464,6 +543,12 @@ on firstNonMarkerTabIndex(targetWindow, markerUrl)
     set tabCount to count of tabs of targetWindow
     repeat with tabIndex from 1 to tabCount
       try
+        -- 中文注释：marker tab 在我们刚 set URL 后可能仍在 loading，URL 会暂时停留在
+        -- about:blank 或上一次的地址。这种情况下不要把它当成"非 marker tab"返回，
+        -- 否则下一步会把它直接覆盖掉。等到加载稳定再判断。
+        if loading of tab tabIndex of targetWindow then
+          my waitForTabLoad(tab tabIndex of targetWindow, 20)
+        end if
         if (URL of tab tabIndex of targetWindow as text) is not markerUrl then
           return tabIndex
         end if
@@ -505,11 +590,18 @@ end waitForTabLoad
         raise RuntimeError("Chrome 窗口控制没有返回 window id。")
     save_browser_window_state(state_path, window_id=next_window_id, marker_url=marker_url)
 
-    warning = ""
     if site_behavior == "linkedin_auto_expand":
-        warning = best_effort_expand_linkedin_window(next_window_id)
+        # 中文注释：LinkedIn 折叠展开纯属"页面加载完之后再点几个 Show more"的善后步骤，
+        # 完全不影响窗口可见性。把它放后台线程跑，HTTP 响应立刻返回；如果失败也只是
+        # 用户自己手动展开，不影响主流程。
+        threading.Thread(
+            target=best_effort_expand_linkedin_window,
+            args=(next_window_id,),
+            daemon=True,
+            name=f"linkedin-expand-{next_window_id}",
+        ).start()
 
-    return BrowserWindowOpenResult(window_id=next_window_id, warning=warning)
+    return BrowserWindowOpenResult(window_id=next_window_id, warning="")
 
 
 def best_effort_expand_linkedin_window(window_id: str) -> str:
@@ -525,10 +617,12 @@ on run argv
 
     set targetTabIndex to active tab index of targetWindow
     set targetTab to tab targetTabIndex of targetWindow
-    my waitForTabLoad(targetTab, 80)
+    -- 中文注释：后台展开是"善后操作"。即使 LinkedIn 还没全部加载完，多跑一次注入也无妨；
+    -- 把同步等待砍到 ~5 秒，避免后台线程长时间占着 Chrome 的 AppleEvent 通道。
+    my waitForTabLoad(targetTab, 24)
     delay 0.4
     my runExpandJavascript(targetTab, expandJavascript)
-    delay 1.0
+    delay 0.6
     my runExpandJavascript(targetTab, expandJavascript)
   end tell
 
@@ -537,13 +631,13 @@ end run
 
 on findWindowById(existingWindowId)
   tell application "Google Chrome"
-    repeat with w in windows
-      if (id of w as text) = existingWindowId then
-        return w
-      end if
-    end repeat
+    try
+      set windowIdInt to existingWindowId as integer
+      return (first window whose id is windowIdInt)
+    on error
+      return missing value
+    end try
   end tell
-  return missing value
 end findWindowById
 
 on waitForTabLoad(targetTab, maxAttempts)
@@ -615,6 +709,7 @@ def create_app() -> Flask:
     def rebuild_runtime_state() -> None:
         settings = load_settings()
         resume_profile = build_resume_profile(settings.resume_profile)
+        repository.set_profile_configs(settings.search_profiles)
         repository.sync_profile_labels(
             {profile.slug: profile.label for profile in settings.search_profiles}
         )
@@ -824,6 +919,74 @@ def create_app() -> Flask:
             ],
         }
 
+    def build_profile_coverage_view(*, run_limit: int = 30) -> list[dict[str, object]]:
+        recent_runs = repository.latest_refresh_runs(limit=run_limit)
+        per_profile: dict[str, dict[str, object]] = {}
+        for run in recent_runs:
+            result = repository.decode_refresh_result(run)
+            raw_query_details = (
+                result.get("query_details", []) if isinstance(result, dict) else []
+            )
+            if not isinstance(raw_query_details, list):
+                continue
+            entry = per_profile.setdefault(
+                run.profile_slug,
+                {
+                    "profile_slug": run.profile_slug,
+                    "profile_label": run.profile_label,
+                    "queries_total": 0,
+                    "queries_ok": 0,
+                    "queries_empty": 0,
+                    "queries_error": 0,
+                    "results_returned": 0,
+                    "results_requested": 0,
+                    "retry_count": 0,
+                    "runs_seen": 0,
+                    "last_started_at": run.started_at,
+                },
+            )
+            entry["runs_seen"] = int(entry["runs_seen"]) + 1
+            if run.started_at and (
+                entry["last_started_at"] is None
+                or run.started_at > entry["last_started_at"]
+            ):
+                entry["last_started_at"] = run.started_at
+
+            for item in raw_query_details:
+                if not isinstance(item, dict):
+                    continue
+                row_count = int(item.get("row_count") or 0)
+                requested_per_query = int(item.get("results_wanted") or 0)
+                requested_sites = item.get("requested_sites") or []
+                requested_sites_count = len(requested_sites) if isinstance(requested_sites, list) else 0
+                status = str(item.get("status") or "")
+                retries = int(item.get("retry_count") or 0)
+
+                entry["queries_total"] = int(entry["queries_total"]) + 1
+                if status == "ok":
+                    entry["queries_ok"] = int(entry["queries_ok"]) + 1
+                elif status == "empty":
+                    entry["queries_empty"] = int(entry["queries_empty"]) + 1
+                elif status == "error":
+                    entry["queries_error"] = int(entry["queries_error"]) + 1
+                entry["results_returned"] = int(entry["results_returned"]) + row_count
+                entry["results_requested"] = int(entry["results_requested"]) + (
+                    requested_per_query * max(requested_sites_count, 1)
+                )
+                entry["retry_count"] = int(entry["retry_count"]) + retries
+
+        coverage_view: list[dict[str, object]] = []
+        for entry in per_profile.values():
+            requested = int(entry["results_requested"])
+            returned = int(entry["results_returned"])
+            entry["coverage_ratio"] = (returned / requested) if requested else 0.0
+            coverage_view.append(entry)
+        coverage_view.sort(
+            key=lambda item: (item.get("last_started_at") is None, item.get("last_started_at")),
+            reverse=True,
+        )
+        return coverage_view
+
     def split_multiline_input(raw_value: str) -> list[str]:
         values: list[str] = []
         for chunk in raw_value.replace("|", "\n").replace(",", "\n").splitlines():
@@ -903,6 +1066,7 @@ def create_app() -> Flask:
         artifacts = result.get("artifacts", {}) if isinstance(result, dict) else {}
         final_pdf_name = str(artifacts.get("final_pdf") or "")
         final_pdf_ready = False
+        diff_pdf_ready = False
         if run.workspace_dir:
             workspace_dir = Path(run.workspace_dir)
             if final_pdf_name:
@@ -911,6 +1075,17 @@ def create_app() -> Flask:
                 final_pdf_ready = (workspace_dir / "final_resume.pdf").exists() or any(
                     workspace_dir.glob("cv-*.pdf")
                 )
+            diff_pdf_ready = (workspace_dir / "diff.pdf").exists()
+        final_pdf_url = (
+            url_for("tailor_artifact", job_id=run.job_id, artifact_key="final_pdf")
+            if final_pdf_ready and run.job_id
+            else ""
+        )
+        diff_pdf_url = (
+            url_for("tailor_artifact", job_id=run.job_id, artifact_key="diff_pdf")
+            if diff_pdf_ready and run.job_id
+            else ""
+        )
         return {
             "run": run,
             "job": job,
@@ -923,6 +1098,9 @@ def create_app() -> Flask:
             "session_id": run.session_id or str(result.get("session_id") or ""),
             "base_resume_name": Path(run.base_resume_path).name if run.base_resume_path else "",
             "final_pdf_ready": final_pdf_ready,
+            "diff_pdf_ready": diff_pdf_ready,
+            "final_pdf_url": final_pdf_url,
+            "diff_pdf_url": diff_pdf_url,
             "latest_message": run.last_message or run.error_text,
         }
 
@@ -1018,19 +1196,28 @@ def create_app() -> Flask:
                 "latest_message": latest_view["latest_message"],
                 "base_resume_name": latest_view["base_resume_name"],
             }
-        history = [
-            {
-                "id": view["run"].id,
-                "status": view["run"].status,
-                "step_key": view["run"].current_step_key,
-                "step_label": view["current_step_label"],
-                "updated_at": view["run"].updated_at.isoformat() if view["run"].updated_at else None,
-                "session_id": view["session_id"],
-                "last_message": view["latest_message"],
-                "base_resume_name": view["base_resume_name"],
-            }
-            for view in run_views[:limit]
-        ]
+        history = []
+        for view in run_views[:limit]:
+            run_obj = view["run"]
+            run_id = run_obj.id or 0
+            workspace_dir = run_obj.workspace_dir or ""
+            has_snapshot = False
+            if run_id and workspace_dir:
+                snapshot_state = Path(workspace_dir) / "history" / str(run_id) / "pipeline_state.json"
+                has_snapshot = snapshot_state.exists()
+            history.append(
+                {
+                    "id": run_id,
+                    "status": run_obj.status,
+                    "step_key": run_obj.current_step_key,
+                    "step_label": view["current_step_label"],
+                    "updated_at": run_obj.updated_at.isoformat() if run_obj.updated_at else None,
+                    "session_id": view["session_id"],
+                    "last_message": view["latest_message"],
+                    "base_resume_name": view["base_resume_name"],
+                    "has_snapshot": has_snapshot,
+                }
+            )
         return summary, history
 
     def build_application_track_views(
@@ -1418,6 +1605,13 @@ def create_app() -> Flask:
                 started_at=parse_pipeline_timestamp(step.get("started_at")),
                 finished_at=parse_pipeline_timestamp(step.get("finished_at")),
             )
+        # 中文注释：成功收尾的 run 立即把 final tex / pipeline_state 拍成快照，便于后续在
+        # job_detail 历史列表里"恢复到此版本"。失败 / 停止 / 仍在 pending 的 run 不快照。
+        if run_status == "succeeded":
+            try:
+                tailor_service.snapshot_run_history(workspace, run_id)
+            except Exception:
+                pass
 
     def build_workspace_runtime(job) -> dict[str, object]:
         tailor_service = web_app.config["tailor_service"]
@@ -1522,6 +1716,13 @@ def create_app() -> Flask:
             "session_error": str(pipeline_state.get("session_error") or ""),
             "session_auto_ready": bool(session_instruction_text)
             and str(pipeline_state.get("session_status") or "not_started") == "ready",
+            "tailor_loop_soft_pass": (
+                pipeline_state.get("tailor_loop_soft_pass")
+                if isinstance(pipeline_state.get("tailor_loop_soft_pass"), dict)
+                else None
+            ),
+            "assets_stale": bool(pipeline_state.get("assets_stale")),
+            "assets_stale_message": str(pipeline_state.get("assets_stale_message") or ""),
         }
 
     def resolve_effective_session_state(
@@ -1691,6 +1892,11 @@ def create_app() -> Flask:
             error_text=error_text,
             finished_at=datetime.now(timezone.utc) if status in TERMINAL_RUN_STATUSES else None,
         )
+        if status == "succeeded":
+            try:
+                tailor_service.snapshot_run_history(workspace, run_id)
+            except Exception:
+                pass
 
     def run_tailor_task(run_id: int, job_id: int, mode: str, step_key: str | None) -> None:
         repository = web_app.config["repository"]
@@ -2100,6 +2306,7 @@ def create_app() -> Flask:
         tailor_stats = repository.tailor_run_stats()
         source_site_overview = repository.source_site_overview()
         profiles_view = build_profiles_view()
+        coverage_view = build_profile_coverage_view()
 
         return render_template(
             "dashboard.html",
@@ -2111,6 +2318,7 @@ def create_app() -> Flask:
                     {"id": "dashboard-overview", "label": "整体统计"},
                     {"id": "dashboard-jobs", "label": "最近高分职位"},
                     {"id": "dashboard-refresh", "label": "最近抓取"},
+                    {"id": "dashboard-coverage", "label": "抓取覆盖度"},
                     {"id": "dashboard-tailor", "label": "最近精修"},
                     {"id": "dashboard-track", "label": "投递追踪"},
                 ],
@@ -2130,6 +2338,7 @@ def create_app() -> Flask:
             application_tracks=application_tracks,
             track_stats=track_stats,
             tailor_stats=tailor_stats,
+            coverage_view=coverage_view,
         )
 
     @web_app.get("/crawler")
@@ -2797,6 +3006,57 @@ def create_app() -> Flask:
             )
         return redirect(f"{redirect_target}{separator}message={deletion_message}")
 
+    @web_app.post("/tailor-runs/<int:run_id>/restore")
+    def restore_tailor_run(run_id: int):
+        tailor_service = web_app.config["tailor_service"]
+        run = repository.get_tailor_run(run_id)
+        if run is None:
+            abort(404)
+        job = repository.get_job(run.job_id)
+        if job is None:
+            abort(404)
+
+        return_to = request.form.get("return_to", "").strip()
+        redirect_target = (
+            strip_message_query(return_to)
+            if return_to.startswith("/") and not return_to.startswith("//")
+            else url_for("job_detail", job_id=run.job_id)
+        )
+        separator = "&" if "?" in redirect_target else "?"
+
+        latest_run = repository.latest_tailor_run_for_job(run.job_id)
+        if latest_run is not None and latest_run.status in ACTIVE_RUN_STATUSES:
+            message = "请先停止当前正在运行的精修任务。"
+            if is_async_request():
+                return json_message(message, payload=build_job_session_payload(job, message=message), status=409)
+            return redirect(f"{redirect_target}{separator}message={message}")
+
+        workspace = tailor_service.ensure_workspace(job)
+        if not tailor_service.has_run_snapshot(workspace, run_id):
+            message = "该 run 没有保存的历史快照。"
+            if is_async_request():
+                return json_message(message, payload=build_job_session_payload(job, message=message), status=404)
+            return redirect(f"{redirect_target}{separator}message={message}")
+
+        restored = tailor_service.restore_run_snapshot(workspace, run_id)
+        if not restored:
+            message = "恢复历史版本失败。"
+            if is_async_request():
+                return json_message(message, payload=build_job_session_payload(job, message=message), status=500)
+            return redirect(f"{redirect_target}{separator}message={message}")
+
+        if latest_run is not None and latest_run.status not in ACTIVE_RUN_STATUSES:
+            sync_tailor_run_from_workspace(
+                latest_run.id or 0,
+                workspace,
+                session_id=latest_run.session_id,
+                last_message_override=f"已恢复到 run #{run_id} 的历史版本。",
+            )
+        message = f"已恢复到 run #{run_id} 的最终稿，并重新编译 PDF。"
+        if is_async_request():
+            return json_message(message, payload=build_job_session_payload(job, message=message))
+        return redirect(f"{redirect_target}{separator}message={message}")
+
     @web_app.post("/refresh")
     def refresh_jobs():
         profile_slug = request.form.get("profile_slug", "all")
@@ -2857,6 +3117,39 @@ def create_app() -> Flask:
         save_search_terms(profile_slug, updated_terms)
         rebuild_runtime_state()
         return redirect(url_for(redirect_to, message=f"已从 {profile.label} 删除关键词。"))
+
+    @web_app.post("/profiles/<profile_slug>/keyword-rules")
+    def update_profile_keyword_rules(profile_slug: str):
+        service = web_app.config["service"]
+        redirect_to = resolve_redirect_endpoint(request.form.get("redirect_to"), default="crawler")
+        profile = next((item for item in service.enabled_profiles() if item.slug == profile_slug), None)
+        if profile is None:
+            abort(404)
+
+        exclude_keywords = split_multiline_input(request.form.get("exclude_keywords", ""))
+        require_any_keywords = split_multiline_input(request.form.get("require_any_keywords", ""))
+
+        weights: dict[str, float] = {}
+        for term in profile.search_terms:
+            field_name = f"weight__{term}"
+            raw_weight = request.form.get(field_name, "")
+            try:
+                weights[term] = float(raw_weight) if raw_weight else 1.0
+            except ValueError:
+                weights[term] = 1.0
+
+        try:
+            save_profile_keyword_rules(
+                profile_slug,
+                exclude_keywords=exclude_keywords,
+                require_any_keywords=require_any_keywords,
+                search_term_weights=weights or None,
+            )
+        except KeyError:
+            abort(404)
+
+        rebuild_runtime_state()
+        return redirect(url_for(redirect_to, message=f"已更新 {profile.label} 的关键词规则。"))
 
     @web_app.post("/profiles/<profile_slug>/locations")
     def update_profile_locations(profile_slug: str):
@@ -2945,6 +3238,9 @@ def create_app() -> Flask:
             revision_advice_updated_at=runtime["revision_advice_updated_at"],
             current_run_step_label=payload["run"]["current_step_label"],
             final_prompt_available=payload["session"]["ready"],
+            tailor_loop_soft_pass=runtime.get("tailor_loop_soft_pass"),
+            assets_stale=runtime.get("assets_stale", False),
+            assets_stale_message=runtime.get("assets_stale_message", ""),
         )
 
     @web_app.get("/jobs/<int:job_id>/preview")

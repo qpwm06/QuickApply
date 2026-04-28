@@ -212,6 +212,45 @@
             />
             <button type="submit" class="ghost-button">保存地点</button>
           </form>
+
+          <details class="fold-card top-space-sm">
+            <summary>
+              <span>关键词规则（exclude / require / 权重）</span>
+              <span class="row-subtitle">默认折叠，调权或加禁用关键词时再展开</span>
+            </summary>
+            <form method="post" action="{{ url_for('update_profile_keyword_rules', profile_slug=item.profile.slug) }}" class="editor-form" data-native-scroll-restore>
+              <input type="hidden" name="redirect_to" value="crawler" />
+              <label>
+                禁用关键词（exclude_keywords，每行一个）
+                <textarea name="exclude_keywords" rows="3" placeholder="intern&#10;internship">{{ item.profile.exclude_keywords|join('\n') }}</textarea>
+              </label>
+              <label>
+                必含任一关键词（require_any_keywords，每行一个；留空表示不限制）
+                <textarea name="require_any_keywords" rows="3" placeholder="materials&#10;molecular dynamics">{{ item.profile.require_any_keywords|join('\n') }}</textarea>
+              </label>
+              {% if item.profile.search_terms %}
+              <div class="term-weight-grid">
+                <p class="row-subtitle">每个搜索词的供给权重（0-2，默认 1.0）</p>
+                {% for term in item.profile.search_terms %}
+                <label class="term-weight-row">
+                  <span class="term-weight-label">{{ term }}</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="2"
+                    name="weight__{{ term }}"
+                    value="{{ '%.2f'|format((item.term_weights[loop.index0].weight if loop.index0 < item.term_weights|length else 1.0)) }}"
+                  />
+                </label>
+                {% endfor %}
+              </div>
+              {% endif %}
+              <div class="form-actions">
+                <button type="submit" class="ghost-button">保存关键词规则</button>
+              </div>
+            </form>
+          </details>
         </div>
 
         <div class="profile-admin-side">

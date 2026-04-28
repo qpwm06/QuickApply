@@ -150,6 +150,51 @@
   </div>
 </section>
 
+<section class="content-section" id="dashboard-coverage">
+  <div class="section-card">
+    <div class="section-card-header">
+      <div>
+        <p class="section-kicker">抓取覆盖度</p>
+        <h3>看每个画像最近抓取的返回率，发现站点限流或反爬迹象</h3>
+      </div>
+      <a href="{{ url_for('crawler') }}" class="ghost-link">去爬虫中心</a>
+    </div>
+
+    {% if coverage_view %}
+    <div class="table-shell">
+      <div class="table-header coverage-grid">
+        <span>画像</span>
+        <span>最近抓取</span>
+        <span>Query (ok/empty/err)</span>
+        <span>返回 / 请求</span>
+        <span>覆盖率</span>
+        <span>重试</span>
+      </div>
+      {% for entry in coverage_view %}
+      <article class="table-row coverage-grid">
+        <span>{{ entry.profile_label or entry.profile_slug }}</span>
+        <span>
+          {% if entry.last_started_at %}
+          {{ entry.last_started_at|localtime("%m-%d %H:%M %Z") }}
+          {% else %}
+          —
+          {% endif %}
+        </span>
+        <span>{{ entry.queries_ok }} / {{ entry.queries_empty }} / {{ entry.queries_error }}</span>
+        <span>{{ entry.results_returned }} / {{ entry.results_requested }}</span>
+        <span class="{% if entry.coverage_ratio < 0.4 %}run-warn{% elif entry.coverage_ratio < 0.7 %}run-pending{% else %}run-ok{% endif %}">
+          {{ "%.0f"|format(entry.coverage_ratio * 100) }}%
+        </span>
+        <span>{{ entry.retry_count }}（{{ entry.runs_seen }} 次抓取）</span>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">最近没有可统计的抓取记录。</div>
+    {% endif %}
+  </div>
+</section>
+
 <section class="content-section" id="dashboard-track">
   <div class="section-card">
     <div class="section-card-header">

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -148,7 +149,24 @@ class JobSpyFetcher:
         self.timeout_seconds = timeout_seconds
         self.proxy_urls = load_proxy_urls(proxy_file)
 
-    def _run_query(
+    _RETRY_DELAYS_SECONDS = (5, 15)
+    _RETRYABLE_HINTS = (
+        "timeout",
+        "timed out",
+        "connection",
+        "temporarily unavailable",
+        "remote disconnected",
+        "read timed out",
+        "network is unreachable",
+    )
+
+    def _is_retryable_error(self, exc: BaseException) -> bool:
+        if isinstance(exc, subprocess.TimeoutExpired):
+            return True
+        text = str(exc).lower()
+        return any(hint in text for hint in self._RETRYABLE_HINTS)
+
+    def _invoke_jobspy(
         self,
         profile: SearchProfileConfig,
         search_term: str,
@@ -176,6 +194,27 @@ class JobSpyFetcher:
             return []
         return json.loads(result.stdout)
 
+    def _run_query(
+        self,
+        profile: SearchProfileConfig,
+        search_term: str,
+        location: str,
+    ) -> tuple[list[dict[str, Any]], int, list[str]]:
+        attempts = 0
+        retry_errors: list[str] = []
+        for attempt_index in range(len(self._RETRY_DELAYS_SECONDS) + 1):
+            attempts += 1
+            try:
+                rows = self._invoke_jobspy(profile, search_term, location)
+                return rows, attempts - 1, retry_errors
+            except Exception as exc:
+                if attempt_index >= len(self._RETRY_DELAYS_SECONDS) or not self._is_retryable_error(exc):
+                    raise
+                retry_errors.append(str(exc))
+                time.sleep(self._RETRY_DELAYS_SECONDS[attempt_index])
+        # 中文注释：理论上不可达，loop 内要么 return 要么 raise。
+        raise RuntimeError("jobspy retry loop exited unexpectedly")
+
     def fetch_profile(
         self, profile: SearchProfileConfig
     ) -> tuple[list[FetchedJob], list[str], list[dict[str, Any]]]:
@@ -186,7 +225,9 @@ class JobSpyFetcher:
         for search_term in profile.search_terms:
             for location in profile.locations:
                 try:
-                    rows = self._run_query(profile, search_term, location)
+                    rows, retry_count, retry_errors = self._run_query(
+                        profile, search_term, location
+                    )
                 except Exception as exc:  # pragma: no cover - network path
                     warning_text = (
                         f"{profile.slug}: query={search_term!r}, location={location!r}, error={exc}"
@@ -201,6 +242,8 @@ class JobSpyFetcher:
                             "row_count": 0,
                             "status": "error",
                             "error": str(exc),
+                            "retry_count": len(self._RETRY_DELAYS_SECONDS),
+                            "retry_errors": [],
                         }
                     )
                     continue
@@ -221,8 +264,15 @@ class JobSpyFetcher:
                         "row_count": len(rows),
                         "status": "ok" if rows else "empty",
                         "error": "",
+                        "retry_count": retry_count,
+                        "retry_errors": retry_errors,
+                        "results_wanted": profile.results_wanted,
                     }
                 )
+                if retry_count:
+                    warnings.append(
+                        f"{profile.slug}: query={search_term!r}, location={location!r} succeeded after {retry_count} retr{'y' if retry_count == 1 else 'ies'}"
+                    )
 
                 if not rows:
                     continue

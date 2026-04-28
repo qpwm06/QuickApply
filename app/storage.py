@@ -10,6 +10,7 @@ import re
 from sqlalchemy import desc, func, or_
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app.config import SearchProfileConfig
 from app.job_dedupe import (
     build_job_dedupe_key,
     dump_source_variants,
@@ -27,6 +28,7 @@ from app.models import (
     TailorRun,
     TailorRunStep,
 )
+from app.profile_rules import build_job_record_rule_blob, matches_search_profile_rules
 from app.time_utils import LOCAL_TIMEZONE, to_local_time
 
 
@@ -121,12 +123,28 @@ def _earliest_datetime(
 
 
 class JobRepository:
-    def __init__(self, database_url: str) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        profile_configs: Sequence[SearchProfileConfig] | None = None,
+    ) -> None:
         if database_url.startswith("sqlite:///"):
             sqlite_path = Path(database_url.removeprefix("sqlite:///"))
             sqlite_path.parent.mkdir(parents=True, exist_ok=True)
         connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
         self.engine = create_engine(database_url, connect_args=connect_args)
+        self.profile_configs: dict[str, SearchProfileConfig] = {}
+        self.set_profile_configs(profile_configs or ())
+
+    def set_profile_configs(
+        self,
+        profile_configs: Sequence[SearchProfileConfig],
+    ) -> None:
+        self.profile_configs = {
+            profile.slug: profile
+            for profile in profile_configs
+            if profile.enabled
+        }
 
     def init_db(self) -> None:
         SQLModel.metadata.create_all(self.engine)
@@ -558,6 +576,9 @@ class JobRepository:
         selected_countries = {country for country in (countries or []) if country}
         filtered: list[JobRecord] = []
         for job in rows:
+            search_profile = self.profile_configs.get(job.profile_slug)
+            if not matches_search_profile_rules(build_job_record_rule_blob(job), search_profile):
+                continue
             if normalize_company_name(job.company) in excluded_names:
                 continue
             if selected_countries and job_country_label(job) not in selected_countries:
