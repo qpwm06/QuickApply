@@ -786,7 +786,9 @@ def create_app() -> Flask:
         return " / ".join(item["label"] for item in variants)
 
     def job_browser_target_url(job: JobRecord, *, absolute_preview: bool = False) -> str:
-        # LinkedIn 职位统一跳到搜索壳页，并带 currentJobId，尽量保持双栏详情体验。
+        # LinkedIn 职位走 /jobs/view/<id>/ 标准详情页。之前拼搜索壳页 + currentJobId 是为了保留双栏，
+        # 但 LinkedIn 前端会在搜索结果异步加载完之后把右栏强制切换到第一条，覆盖 currentJobId，
+        # 用户体验是"先到正确岗位、几秒后跳走"，这里不再走那条路。
         linkedin_shell_url = linkedin_job_detail_shell_url(job)
         if linkedin_shell_url:
             return linkedin_shell_url

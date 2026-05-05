@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import re
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from app.models import JobRecord
 
@@ -214,6 +214,9 @@ def _linkedin_search_location(job: JobRecord) -> str:
 
 
 def linkedin_job_detail_shell_url(job: JobRecord) -> str:
+    # 中文注释：以前用 /jobs/search/?keywords=...&currentJobId=... 拼"搜索壳页"，想保留双栏体验。
+    # 但 LinkedIn 前端在搜索结果异步加载完之后会强制把右栏切到搜索结果第一条，覆盖 currentJobId，
+    # 表现为"打开瞬间正确，几秒后跳到另一条"。改成 /jobs/view/<id>/ 标准详情页，不再被搜索结果干扰。
     if job.source_site.strip().lower() != "linkedin":
         return ""
 
@@ -221,19 +224,7 @@ def linkedin_job_detail_shell_url(job: JobRecord) -> str:
     if not current_job_id:
         return ""
 
-    search_url = linkedin_jobs_search_url(job.search_term or job.title, _linkedin_search_location(job))
-    search_url_parts = urlsplit(search_url)
-    params = dict(parse_qsl(search_url_parts.query, keep_blank_values=True))
-    params["currentJobId"] = current_job_id
-    return urlunsplit(
-        (
-            search_url_parts.scheme,
-            search_url_parts.netloc,
-            search_url_parts.path,
-            urlencode(params),
-            search_url_parts.fragment,
-        )
-    )
+    return f"https://www.linkedin.com/jobs/view/{current_job_id}/"
 
 
 def matches_location_query(job: JobRecord, location_query: str) -> bool:

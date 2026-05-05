@@ -62,7 +62,9 @@ def _write_test_config(tmp_path: Path) -> Path:
     return config_path
 
 
-def test_linkedin_job_detail_shell_url_builds_search_shell_url() -> None:
+def test_linkedin_job_detail_shell_url_returns_canonical_view_url() -> None:
+    # 中文注释：搜索壳页方案在 LinkedIn 前端异步加载完搜索结果后会把右栏切到第一条，
+    # 用户感觉"先到正确岗位再跳走"。改成 /jobs/view/<id>/ 标准详情页就不会再被搜索结果干扰。
     job = JobRecord(
         unique_key="linkedin-shell-job",
         profile_slug="scientific-ml",
@@ -83,10 +85,7 @@ def test_linkedin_job_detail_shell_url_builds_search_shell_url() -> None:
     shell_url = linkedin_job_detail_shell_url(job)
 
     assert extract_linkedin_job_id(job.job_url) == "route-shell-job"
-    assert shell_url.startswith("https://www.linkedin.com/jobs/search/?")
-    assert "keywords=%22scientific+machine+learning%22" in shell_url
-    assert "location=Chicago%2C+IL" in shell_url
-    assert "currentJobId=route-shell-job" in shell_url
+    assert shell_url == "https://www.linkedin.com/jobs/view/route-shell-job/"
 
 
 def test_dashboard_routes_render_with_admin_shell(tmp_path, monkeypatch) -> None:
@@ -1636,8 +1635,7 @@ def test_jobs_page_title_opens_job_popup_and_keeps_tailor_link(tmp_path, monkeyp
 
     assert popup_job is not None
     assert fallback_job is not None
-    assert 'data-open-url="https://www.linkedin.com/jobs/search/?' in jobs_html
-    assert 'currentJobId=route-popup-job' in jobs_html
+    assert 'data-open-url="https://www.linkedin.com/jobs/view/route-popup-job/"' in jobs_html
     assert (
         f'href="/jobs/{popup_job.id}" class="primary-link">简历精修</a>'
         in jobs_html
@@ -1879,8 +1877,7 @@ def test_open_job_browser_window_route_uses_chrome_window_on_macos(tmp_path, mon
         payload["message"]
         == "已在专用 Chrome 岗位工作窗中打开当前 LinkedIn 职位，并自动尝试展开折叠内容。当前复用你的 Chrome 配置，扩展状态按浏览器原有设置保持。"
     )
-    assert payload["opened_url"].startswith("https://www.linkedin.com/jobs/search/?")
-    assert "currentJobId=route-browser-window-job" in payload["opened_url"]
+    assert payload["opened_url"] == "https://www.linkedin.com/jobs/view/route-browser-window-job/"
     assert payload["mode"] == "chrome_dedicated_window"
     assert payload["site_behavior"] == "linkedin_auto_expand"
     assert payload["plugin_mode"] == "reuse_chrome_profile_state"
@@ -1890,8 +1887,7 @@ def test_open_job_browser_window_route_uses_chrome_window_on_macos(tmp_path, mon
     state_path = web_app.config["browser_window_state_path"]
     saved_state = main_module.load_browser_window_state(state_path)
     assert calls[0][0] == "osascript"
-    assert calls[0][3].startswith("https://www.linkedin.com/jobs/search/?")
-    assert "currentJobId=route-browser-window-job" in calls[0][3]
+    assert calls[0][3] == "https://www.linkedin.com/jobs/view/route-browser-window-job/"
     assert calls[0][4] == ""
     assert calls[0][5] == "http://localhost/jobs/browser-window-marker"
     assert calls[0][6] == "linkedin_auto_expand"
@@ -2164,8 +2160,7 @@ def test_open_job_browser_window_route_dispatches_linkedin_expand_in_background(
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["fallback"] is False
-    assert payload["opened_url"].startswith("https://www.linkedin.com/jobs/search/?")
-    assert "currentJobId=route-browser-window-warning-job" in payload["opened_url"]
+    assert payload["opened_url"] == "https://www.linkedin.com/jobs/view/route-browser-window-warning-job/"
     assert payload["site_behavior"] == "linkedin_auto_expand"
     assert payload.get("warning", "") == ""
     assert any(name.startswith("linkedin-expand-") for name in started_threads)
@@ -2237,8 +2232,7 @@ def test_open_job_browser_window_failure_keeps_saved_window_state(tmp_path, monk
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["fallback"] is True
-    assert payload["opened_url"].startswith("https://www.linkedin.com/jobs/search/?")
-    assert "currentJobId=window-state-scientist" in payload["opened_url"]
+    assert payload["opened_url"] == "https://www.linkedin.com/jobs/view/window-state-scientist/"
     assert main_module.load_browser_window_state(state_path)["window_id"] == "chrome-window-123"
     assert (
         main_module.load_browser_window_state(state_path)["marker_url"]
