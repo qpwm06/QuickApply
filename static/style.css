@@ -341,6 +341,12 @@ textarea {
   display: flex;
   gap: 14px;
   align-items: flex-start;
+  min-width: 0;
+}
+
+.page-header-main > div,
+.section-card-header > div {
+  min-width: 0;
 }
 
 .sidebar-toggle {
@@ -372,6 +378,7 @@ textarea {
   font-size: clamp(1.6rem, 2vw, 2.2rem);
   line-height: 1.08;
   letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
 }
 
 .page-subtitle {
@@ -601,6 +608,7 @@ textarea {
   font-size: 1.3rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
 }
 
 .section-card-header p:last-child,
@@ -1092,6 +1100,49 @@ button:disabled,
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
   gap: 12px;
+}
+
+.jobs-admin-disclosure {
+  border-top: 1px solid var(--line);
+}
+
+.jobs-admin-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0 2px;
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.jobs-admin-disclosure > summary::marker {
+  color: var(--primary-strong);
+}
+
+.jobs-admin-disclosure > summary > span:first-child::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--primary-strong);
+  transition: transform 0.16s ease;
+}
+
+.jobs-admin-disclosure[open] > summary > span:first-child::before {
+  transform: rotate(90deg);
+}
+
+.jobs-admin-disclosure[open] > summary {
+  padding-bottom: 12px;
+}
+
+.jobs-admin-pane {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
 }
 
 .profile-admin-main,
@@ -2732,6 +2783,7 @@ textarea[readonly] {
 
   .page-header-side {
     justify-content: flex-start;
+    width: 100%;
   }
 
   .table-shell,
@@ -2789,8 +2841,22 @@ textarea[readonly] {
 }
 
 @media (max-width: 720px) {
+  .page-header,
+  .section-card-header,
+  .page-header-main,
+  .page-header-main > div,
+  .section-card-header > div {
+    width: 100%;
+    min-width: 0;
+  }
+
   .page-title {
     font-size: 1.34rem;
+  }
+
+  .section-card-header h3 {
+    font-size: 1.12rem;
+    line-height: 1.4;
   }
 
   .section-card,

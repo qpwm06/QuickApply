@@ -80,38 +80,43 @@
       <button type="submit" class="primary-button">应用筛选</button>
     </form>
 
-    <div class="jobs-admin-grid top-space-sm">
-      <article class="mini-surface">
-        <div class="mini-surface-head">
-          <span>排除公司</span>
-          <span class="mini-badge">{{ excluded_companies|length }}</span>
-        </div>
-        <form method="post" action="{{ url_for('create_excluded_company_entry') }}" class="add-term-form top-space-sm" data-native-scroll-restore>
-          <input type="hidden" name="return_to" value="{{ current_query_url }}" />
-          <input type="text" name="company_name" placeholder="手工加入需要屏蔽的公司" />
-          <button type="submit" class="ghost-button">加入排除</button>
-        </form>
-      </article>
-
-      <article class="mini-surface">
-        <div class="mini-surface-head">
-          <span>当前排除列表</span>
-        </div>
-        <div class="term-list">
-          {% for company in excluded_companies %}
-          <div class="term-chip">
-            <span>{{ company.display_name }}</span>
-            <form method="post" action="{{ url_for('delete_excluded_company_entry', company_id=company.id) }}" class="term-chip-delete-form" data-native-scroll-restore>
-              <input type="hidden" name="return_to" value="{{ current_query_url }}" />
-              <button type="submit" aria-label="移除排除公司">×</button>
-            </form>
+    <details class="jobs-admin-disclosure top-space-sm">
+      <summary>
+        <span>排除公司管理</span>
+        <span class="mini-badge"><span>已排除</span> <strong>{{ excluded_companies|length }}</strong></span>
+      </summary>
+      <div class="jobs-admin-grid">
+        <div class="jobs-admin-pane">
+          <div class="mini-surface-head">
+            <span>排除公司</span>
           </div>
-          {% else %}
-          <div class="empty-state compact-empty-state">当前没有排除公司。</div>
-          {% endfor %}
+          <form method="post" action="{{ url_for('create_excluded_company_entry') }}" class="add-term-form top-space-sm" data-native-scroll-restore>
+            <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+            <input type="text" name="company_name" placeholder="手工加入需要屏蔽的公司" />
+            <button type="submit" class="ghost-button">加入排除</button>
+          </form>
         </div>
-      </article>
-    </div>
+
+        <div class="jobs-admin-pane">
+          <div class="mini-surface-head">
+            <span>当前排除列表</span>
+          </div>
+          <div class="term-list top-space-sm">
+            {% for company in excluded_companies %}
+            <div class="term-chip">
+              <span>{{ company.display_name }}</span>
+              <form method="post" action="{{ url_for('delete_excluded_company_entry', company_id=company.id) }}" class="term-chip-delete-form" data-native-scroll-restore>
+                <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+                <button type="submit" aria-label="移除排除公司">×</button>
+              </form>
+            </div>
+            {% else %}
+            <div class="empty-state compact-empty-state">当前没有排除公司。</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </details>
   </div>
 </section>
 

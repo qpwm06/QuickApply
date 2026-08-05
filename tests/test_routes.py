@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import subprocess
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import yaml
 from sqlmodel import Session, select
 
 import app.config as config_module
+from app.fetcher import FetchedJob
 from app.location_utils import extract_linkedin_job_id, linkedin_job_detail_shell_url
 from app.models import ApplicationTrack, JobRecord, RefreshRun, TailorRun
 
@@ -64,7 +66,8 @@ def _write_test_config(tmp_path: Path) -> Path:
 
 def test_linkedin_job_detail_shell_url_returns_canonical_view_url() -> None:
     # 中文注释：搜索壳页方案在 LinkedIn 前端异步加载完搜索结果后会把右栏切到第一条，
-    # 用户感觉"先到正确岗位再跳走"。改成 /jobs/view/<id>/ 标准详情页就不会再被搜索结果干扰。
+    # 用户感觉"先到正确岗位再跳走"。改成 /jobs/view/<id>/ 标准详情页配合注入的跳转守护脚本
+    # 来阻断 LinkedIn 跳到搜索壳。
     job = JobRecord(
         unique_key="linkedin-shell-job",
         profile_slug="scientific-ml",
@@ -86,6 +89,16 @@ def test_linkedin_job_detail_shell_url_returns_canonical_view_url() -> None:
 
     assert extract_linkedin_job_id(job.job_url) == "route-shell-job"
     assert shell_url == "https://www.linkedin.com/jobs/view/route-shell-job/"
+
+
+def test_linkedin_redirect_guard_requires_exact_job_path() -> None:
+    import app.main as main_module
+
+    guard_script = main_module.linkedin_expand_javascript("123")
+
+    # 中文注释：岗位 123 不能把 /jobs/view/1234 误判成当前岗位，否则防跳转保护会放过错误职位。
+    assert "pathname === desiredPathPrefix || pathname === desiredPath" in guard_script
+    assert "pathname.startsWith(desiredPathPrefix)" not in guard_script
 
 
 def test_dashboard_routes_render_with_admin_shell(tmp_path, monkeypatch) -> None:
@@ -445,6 +458,206 @@ def test_repository_jobs_keyword_filters_and_counts_are_case_insensitive(
         "applied_count": 2,
         "reviewed_count": 2,
     }
+
+
+def test_repository_list_jobs_applies_profile_rule_gate_to_saved_jobs(
+    tmp_path, monkeypatch
+) -> None:
+    config_path = _write_test_config(tmp_path)
+    saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    saved["search_profiles"][0]["exclude_keywords"] = ["advisor", "genomics"]
+    saved["search_profiles"][0]["require_any_keywords"] = [
+        "materials",
+        "molecular dynamics",
+    ]
+    config_path.write_text(
+        yaml.safe_dump(saved, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
+
+    import app.main as main_module
+
+    main_module = importlib.reload(main_module)
+    web_app = main_module.create_app()
+    repository = web_app.config["repository"]
+    repository.upsert_jobs(
+        [
+            JobRecord(
+                unique_key="profile-rule-keep",
+                profile_slug="scientific-ml",
+                profile_label="Scientific ML",
+                search_term='"scientific machine learning"',
+                source_site="linkedin",
+                title="Materials Simulation Scientist",
+                company="Bright Lab",
+                location_text="Chicago, IL",
+                city="Chicago",
+                state="IL",
+                country="USA",
+                job_url="https://example.com/jobs/profile-rule-keep",
+                description="Scientific machine learning for materials and molecular dynamics.",
+                score=92.0,
+            ),
+            JobRecord(
+                unique_key="profile-rule-advisor",
+                profile_slug="scientific-ml",
+                profile_label="Scientific ML",
+                search_term='"scientific machine learning"',
+                source_site="linkedin",
+                title="Computational Biology Advisory Role",
+                company="Noise Lab",
+                location_text="Boston, MA",
+                city="Boston",
+                state="MA",
+                country="USA",
+                job_url="https://example.com/jobs/profile-rule-advisor",
+                description="Scientific machine learning for protein modeling.",
+                score=91.0,
+            ),
+            JobRecord(
+                unique_key="profile-rule-missing-required",
+                profile_slug="scientific-ml",
+                profile_label="Scientific ML",
+                search_term='"scientific machine learning"',
+                source_site="indeed",
+                title="Scientific ML Scientist",
+                company="General AI Corp",
+                location_text="Remote, US",
+                city="",
+                state="",
+                country="USA",
+                job_url="https://example.com/jobs/profile-rule-missing-required",
+                description="Scientific machine learning for platform automation.",
+                score=90.0,
+            ),
+        ]
+    )
+
+    with Session(repository.engine) as session:
+        assert len(list(session.exec(select(JobRecord)).all())) == 3
+
+    jobs = repository.list_jobs(limit=10, sort_by="score")
+    counts = repository.jobs_filter_counts(sort_by="score")
+
+    assert [job.title for job in jobs] == ["Materials Simulation Scientist"]
+    assert counts == {
+        "remaining_count": 1,
+        "applied_count": 0,
+        "reviewed_count": 0,
+    }
+
+
+def test_refresh_profile_skips_jobs_blocked_by_profile_rules(tmp_path, monkeypatch) -> None:
+    config_path = _write_test_config(tmp_path)
+    saved = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    saved["search_profiles"][0]["exclude_keywords"] = ["advisor", "genomics"]
+    saved["search_profiles"][0]["require_any_keywords"] = [
+        "materials",
+        "molecular dynamics",
+    ]
+    config_path.write_text(
+        yaml.safe_dump(saved, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
+
+    import app.main as main_module
+
+    main_module = importlib.reload(main_module)
+    web_app = main_module.create_app()
+    repository = web_app.config["repository"]
+    service = web_app.config["service"]
+
+    class FakeFetcher:
+        def fetch_profile(self, profile):
+            return (
+                [
+                    FetchedJob(
+                        unique_key="fetched-keep",
+                        search_term='"scientific machine learning"',
+                        source_site="linkedin",
+                        title="Scientific ML Scientist",
+                        company="Bright Lab",
+                        location_text="Chicago, IL",
+                        city="Chicago",
+                        state="IL",
+                        country="USA",
+                        job_url="https://example.com/jobs/fetched-keep",
+                        company_url="",
+                        interval="yearly",
+                        currency="USD",
+                        min_amount=150000.0,
+                        max_amount=180000.0,
+                        is_remote=False,
+                        description=(
+                            "Scientific machine learning for materials and molecular dynamics."
+                        ),
+                        date_posted=None,
+                    ),
+                    FetchedJob(
+                        unique_key="fetched-excluded",
+                        search_term='"scientific machine learning"',
+                        source_site="linkedin",
+                        title="Computational Biology Advisor",
+                        company="Noise Lab",
+                        location_text="Boston, MA",
+                        city="Boston",
+                        state="MA",
+                        country="USA",
+                        job_url="https://example.com/jobs/fetched-excluded",
+                        company_url="",
+                        interval="yearly",
+                        currency="USD",
+                        min_amount=150000.0,
+                        max_amount=180000.0,
+                        is_remote=False,
+                        description="Genomics role with scientific machine learning.",
+                        date_posted=None,
+                    ),
+                    FetchedJob(
+                        unique_key="fetched-missing-required",
+                        search_term='"scientific machine learning"',
+                        source_site="indeed",
+                        title="Scientific ML Scientist",
+                        company="General AI Corp",
+                        location_text="Remote, US",
+                        city="",
+                        state="",
+                        country="USA",
+                        job_url="https://example.com/jobs/fetched-missing-required",
+                        company_url="",
+                        interval="yearly",
+                        currency="USD",
+                        min_amount=150000.0,
+                        max_amount=180000.0,
+                        is_remote=True,
+                        description="Scientific machine learning for platform automation.",
+                        date_posted=None,
+                    ),
+                ],
+                [],
+                [
+                    {
+                        "search_term": '"scientific machine learning"',
+                        "location": "United States",
+                        "requested_sites": ["linkedin", "indeed"],
+                        "sites_seen": ["linkedin", "indeed"],
+                        "row_count": 3,
+                        "status": "ok",
+                        "error": "",
+                    }
+                ],
+            )
+
+    service.fetcher = FakeFetcher()
+
+    outcome = service.refresh_profile("scientific-ml")
+    jobs = repository.list_jobs(limit=10)
+
+    assert outcome.jobs_seen == 3
+    assert outcome.jobs_saved == 1
+    assert [job.title for job in jobs] == ["Scientific ML Scientist"]
 
 
 def test_repository_merges_cross_source_duplicates_and_keeps_earliest_time(
@@ -1368,6 +1581,8 @@ def test_tailor_tasks_aggregate_runs_by_workspace(tmp_path, monkeypatch) -> None
     )
     job = repository.list_jobs(limit=1)[0]
     workspace = tailor_service.ensure_workspace(job)
+    workspace.final_resume_pdf_path.write_text("pdf", encoding="utf-8")
+    workspace.diff_pdf_path.write_text("diff-pdf", encoding="utf-8")
     for index in range(2):
         repository.create_tailor_run(
             main_module.TailorRun(
@@ -1391,6 +1606,9 @@ def test_tailor_tasks_aggregate_runs_by_workspace(tmp_path, monkeypatch) -> None
     assert "2 次运行" in tailor_html
     assert "Aggregation Scientist" in dashboard_html
     assert "2 次运行" in dashboard_html
+    assert f"/jobs/{job.id}/tailor/artifact/final_pdf" in tailor_html
+    assert f"/jobs/{job.id}/tailor/artifact/diff_pdf" in tailor_html
+    assert "查看 Diff" in tailor_html
 
 
 def test_jobs_page_defaults_to_recent_sort_and_supports_recent_24h_filter(tmp_path, monkeypatch) -> None:
@@ -1893,6 +2111,12 @@ def test_open_job_browser_window_route_uses_chrome_window_on_macos(tmp_path, mon
     assert calls[0][6] == "linkedin_auto_expand"
     assert calls[1][3] == "chrome-window-123"
     assert "show more" in calls[1][4]
+    # 中文注释：注入的 LinkedIn 跳转守护脚本会拦截把页面带离 /jobs/view/<id>/ 的自动跳转
+    # （搜索壳、公司主页等），所以 expand JS 里必须能看到目标 jobId、白名单路径前缀以及
+    # 用户操作时间戳判定。
+    assert "route-browser-window-job" in calls[1][4]
+    assert "/jobs/view/" in calls[1][4]
+    assert "__resumeJobMonitorLastInteract" in calls[1][4]
     assert saved_state["window_id"] == "chrome-window-123"
     assert saved_state["marker_url"] == "http://localhost/jobs/browser-window-marker"
 
@@ -1959,6 +2183,25 @@ def test_open_url_in_dedicated_chrome_window_preserves_existing_window_bounds(tm
     assert "set widthRatio to 0.68" in script
     assert "make new tab at end of tabs with properties {URL:targetUrl}" not in script
     assert "set active tab index of targetWindow to (index of targetTab)" not in script
+    # 中文注释：防御性加固——新窗口必须立刻通过 id 重新解析，避免引用漂移到用户原窗口。
+    assert "set newlyMadeWindow to make new window" in script
+    assert "set newlyMadeWindowId to (id of newlyMadeWindow as text)" in script
+    assert "set targetWindow to my findWindowById(newlyMadeWindowId)" in script
+    # 中文注释：恢复会话/扩展可能让新窗口带回多 tab，必须清理后再写入 marker / target。
+    assert "repeat while (count of tabs of targetWindow) > 1" in script
+    assert "close tab 2 of targetWindow" in script
+    # 中文注释：firstNonMarkerTabIndex 不再把 loading 中的 tab 误判为非 marker。
+    assert "if loading of tab tabIndex of targetWindow then" in script
+    # 中文注释：旧的 set targetWindow to front window 写法不可再出现。
+    assert "set targetWindow to front window" not in script
+    # 中文注释：选定 targetWindow 之后必须锁 id，写每一步前都用 findWindowById 重新解析，
+    # 同时再做一次 unsafe app tab 校验，绝对不能把 target URL 写到用户主窗口的 tab 上。
+    assert "set lockedWindowId to (id of targetWindow as text)" in script
+    assert "set targetWindow to my findWindowById(lockedWindowId)" in script
+    assert "if my windowHasUnsafeAppTab(targetWindow, markerUrl, appOrigin) then" in script
+    assert "拒绝写入：候选 Chrome 窗口包含未授权的 app tab" in script
+    # 中文注释：旧的 set index of targetWindow to 1 会重排 z-order，引发 front window 漂移；删掉。
+    assert "set index of targetWindow to 1" not in script
     assert "set targetTabIndex to active tab index of targetWindow" in expand_script
     assert "execute targetTab javascript expandJavascript" in expand_script
     assert "on runExpandJavascript(targetTab, expandJavascript)" in expand_script
@@ -2044,6 +2287,135 @@ def test_open_url_in_dedicated_chrome_window_ignores_state_from_other_marker(tmp
     assert calls[0][6] == "default"
 
 
+def test_open_url_in_dedicated_chrome_window_hardens_new_window_creation(tmp_path, monkeypatch) -> None:
+    """中文注释：覆盖用户的"window_id 命中真实窗口、但该窗口没有 marker tab"场景。
+    这种 stale state 下脚本必须新建窗口，且必须用 id 重新解析新窗口、清掉残余 tab，
+    防止覆写用户当前窗口里的 tab。"""
+    config_path = _write_test_config(tmp_path)
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
+
+    import app.main as main_module
+
+    main_module = importlib.reload(main_module)
+    state_path = tmp_path / "chrome_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "window_id": "chrome-window-307084533",
+                "marker_url": "http://127.0.0.1:5273/jobs/browser-window-marker",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, check, capture_output, text):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="chrome-window-new\n", stderr="")
+
+    monkeypatch.setattr(main_module.subprocess, "run", fake_run)
+
+    result = main_module.open_url_in_dedicated_chrome_window(
+        "https://example.com/jobs/123/preview",
+        state_path=state_path,
+        marker_url="http://127.0.0.1:5273/jobs/browser-window-marker",
+        site_behavior="default",
+    )
+
+    assert result.window_id == "chrome-window-new"
+    assert len(calls) == 1
+    script = calls[0][2]
+    # 中文注释：build-new-window 路径必须经过 id 重新解析。
+    assert "set newlyMadeWindow to make new window" in script
+    assert "set newlyMadeWindowId to (id of newlyMadeWindow as text)" in script
+    assert "set targetWindow to my findWindowById(newlyMadeWindowId)" in script
+    assert 'error "无法重新解析刚创建的 Chrome 窗口' in script
+    # 中文注释：会话恢复带回多 tab 的兜底清理。
+    assert "repeat while (count of tabs of targetWindow) > 1" in script
+    assert "close tab 2 of targetWindow" in script
+    # 中文注释：firstNonMarkerTabIndex 的 loading 防误判。
+    assert "if loading of tab tabIndex of targetWindow then" in script
+    # 中文注释：旧的 front window 写法不可再出现。
+    assert "set targetWindow to front window" not in script
+    # 中文注释：参数链路依然要把 stale window_id 传下去，让脚本走 findWindowById 失败分支。
+    assert calls[0][4] == "chrome-window-307084533"
+
+
+def test_open_url_in_dedicated_chrome_window_uses_by_id_reference_and_asserts_identity(
+    tmp_path, monkeypatch
+) -> None:
+    """中文注释：覆盖用户复测后报告的"连续点开多个岗位时，主 /jobs 窗口的 tab2 也被刷新"。
+    根因是 `repeat with w in windows ... return w` 返回的是 by-index 引用，AppleScript 在
+    后续访问时会因 Chrome 内部窗口顺序变化（activate / 用户拖拽）漂移到别的窗口。修复后
+    必须用 `(first window whose id is N)` 这种 by-id 引用，并在每次写 tab 之前 re-resolve
+    + assertWindowIdMatches，杜绝引用漂移导致的越权写入。"""
+    config_path = _write_test_config(tmp_path)
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
+
+    import app.main as main_module
+
+    main_module = importlib.reload(main_module)
+    state_path = tmp_path / "chrome_state.json"
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, check, capture_output, text):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="chrome-window-9001\n", stderr="")
+
+    monkeypatch.setattr(main_module.subprocess, "run", fake_run)
+
+    main_module.open_url_in_dedicated_chrome_window(
+        "https://example.com/jobs/123/preview",
+        state_path=state_path,
+        marker_url="http://127.0.0.1:5273/jobs/browser-window-marker",
+        site_behavior="default",
+    )
+
+    assert calls
+    script = calls[0][2]
+
+    # 中文注释：旧的 by-index 引用模式必须被彻底移除（剔除 -- 注释行后再做断言，
+    # 因为我们刻意在注释里保留了"为什么不用旧写法"的解释）。
+    find_body = script.split("on findWindowById")[1].split("end findWindowById")[0]
+    find_body_code_only = "\n".join(
+        line for line in find_body.splitlines() if not line.strip().startswith("--")
+    )
+    assert "repeat with w in windows" not in find_body_code_only
+    assert "return w" not in find_body_code_only
+
+    # 中文注释：findWindowById 必须用 by-id 重新解析的 whose-clause 写法。
+    assert "first window whose id is windowIdInt" in script
+
+    # 中文注释：assertWindowIdMatches 必须存在，用作写 tab 前的最后一道防线。
+    assert "on assertWindowIdMatches(targetWindow, expectedWindowId)" in script
+    assert "Chrome 窗口引用漂移" in script
+
+    # 中文注释：lockedWindowId 必须被定义并在写入前每次重新解析。
+    assert "set lockedWindowId to (id of targetWindow as text)" in script
+    # 中文注释：每个写 tab 的关键节点（marker / new tab / target URL / active tab index）
+    # 都必须先 re-resolve + assert。计数确保任何后续 PR 删掉某一处 assert 都会被发现。
+    reresolve_count = script.count("set targetWindow to my findWindowById(lockedWindowId)")
+    assert reresolve_count >= 5, (
+        f"expected >=5 lockedWindowId re-resolutions before tab writes, got {reresolve_count}"
+    )
+    assert_count = script.count("my assertWindowIdMatches(targetWindow, lockedWindowId)")
+    assert assert_count >= 5, (
+        f"expected >=5 assertWindowIdMatches calls before tab writes, got {assert_count}"
+    )
+
+    # 中文注释：每个 `set URL of tab ... of targetWindow` 之前必须紧跟一次 assertWindowIdMatches。
+    # 用按行扫描的方式确认顺序，避免回归把 assert 放到了无关位置。
+    lines = [line.strip() for line in script.splitlines()]
+    for index, line in enumerate(lines):
+        if line.startswith("set URL of tab") and "of targetWindow" in line:
+            preceding_window = lines[max(0, index - 6) : index]
+            assert any(
+                "assertWindowIdMatches(targetWindow, lockedWindowId)" in prev
+                for prev in preceding_window
+            ), f"set URL of tab without preceding identity check: ...{preceding_window} -> {line}"
+
+
 def test_open_job_browser_window_route_returns_fallback_when_chrome_control_fails(tmp_path, monkeypatch) -> None:
     config_path = _write_test_config(tmp_path)
     monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
@@ -2100,7 +2472,10 @@ def test_open_job_browser_window_route_returns_fallback_when_chrome_control_fail
     assert "chrome control failed" in payload["message"]
 
 
-def test_open_job_browser_window_route_dispatches_linkedin_expand_in_background(tmp_path, monkeypatch) -> None:
+def test_open_job_browser_window_route_runs_linkedin_expand_in_background(tmp_path, monkeypatch) -> None:
+    """中文注释：LinkedIn 自动展开改成后台 daemon 线程触发，HTTP 响应不再等它返回。
+    点击职位的体感延迟从原来的 5-20 秒降到 1 秒级，但代价是失败信息不再回吐到响应里。
+    本用例覆盖：响应里没有 warning 字段，但 LinkedIn 展开 osascript 仍会被调用。"""
     config_path = _write_test_config(tmp_path)
     monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
 
@@ -2131,21 +2506,18 @@ def test_open_job_browser_window_route_dispatches_linkedin_expand_in_background(
     )
     job = repository.list_jobs(limit=1)[0]
     calls: list[list[str]] = []
+    expand_done = threading.Event()
 
     def fake_run(cmd, check, capture_output, text):
         calls.append(list(cmd))
-        return subprocess.CompletedProcess(cmd, 0, stdout="chrome-window-123\n", stderr="")
-
-    started_threads: list[str] = []
-    real_thread_init = main_module.threading.Thread.__init__
-
-    def tracking_thread_init(self, *args, **kwargs):
-        started_threads.append(kwargs.get("name", ""))
-        real_thread_init(self, *args, **kwargs)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(cmd, 0, stdout="chrome-window-123\n", stderr="")
+        # 中文注释：模拟 LinkedIn 展开失败，确认后台线程不会让主响应失败也不会冒到用户面前。
+        expand_done.set()
+        raise subprocess.CalledProcessError(1, cmd, stderr="expand failed")
 
     monkeypatch.setattr(main_module.sys, "platform", "darwin")
     monkeypatch.setattr(main_module.subprocess, "run", fake_run)
-    monkeypatch.setattr(main_module.threading.Thread, "__init__", tracking_thread_init)
 
     client = web_app.test_client()
     response = client.post(
@@ -2162,12 +2534,16 @@ def test_open_job_browser_window_route_dispatches_linkedin_expand_in_background(
     assert payload["fallback"] is False
     assert payload["opened_url"] == "https://www.linkedin.com/jobs/view/route-browser-window-warning-job/"
     assert payload["site_behavior"] == "linkedin_auto_expand"
-    assert payload.get("warning", "") == ""
-    assert any(name.startswith("linkedin-expand-") for name in started_threads)
+    # 中文注释：异步触发后响应里不再有 warning 字段，message 也不应抱怨展开失败。
+    assert "warning" not in payload
+    assert "LinkedIn 自动展开附加步骤失败" not in payload["message"]
     state_path = web_app.config["browser_window_state_path"]
     saved_state = main_module.load_browser_window_state(state_path)
     assert saved_state["window_id"] == "chrome-window-123"
     assert saved_state["marker_url"] == "http://localhost/jobs/browser-window-marker"
+    # 中文注释：后台线程一定会被触发：等到 expand 失败后断言确实跑到了。
+    assert expand_done.wait(timeout=2.0), "LinkedIn 后台展开线程未被启动"
+    assert len(calls) == 2
 
 
 def test_open_job_browser_window_failure_keeps_saved_window_state(tmp_path, monkeypatch) -> None:
@@ -2508,18 +2884,19 @@ def test_application_tracker_renders_chart_and_preserves_chart_range(tmp_path, m
             )
         ]
     )
+    recent_reference = datetime.now(timezone.utc) - timedelta(days=2)
     with Session(repository.engine) as session:
         linked_job = session.exec(
             select(JobRecord).where(JobRecord.unique_key == "tracker-chart-linked-job")
         ).one()
         linked_job_id = linked_job.id or 0
-        linked_job.first_seen_at = datetime(2026, 4, 14, 13, 0, tzinfo=timezone.utc)
+        linked_job.first_seen_at = recent_reference
         session.add(linked_job)
         session.commit()
 
     repository.sync_application_track_for_job(
         linked_job_id,
-        applied_at=datetime(2026, 4, 14, 15, 0, tzinfo=timezone.utc),
+        applied_at=recent_reference + timedelta(hours=2),
     )
     repository.create_manual_application_track(
         ApplicationTrack(
@@ -2530,7 +2907,7 @@ def test_application_tracker_renders_chart_and_preserves_chart_range(tmp_path, m
             profile_label="Scientific ML",
             job_url="https://example.com/jobs/tracker-chart-manual-job",
             notes="Manual chart entry",
-            applied_at=datetime(2026, 4, 15, 16, 0, tzinfo=timezone.utc),
+            applied_at=recent_reference + timedelta(days=1, hours=3),
         )
     )
 

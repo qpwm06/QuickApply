@@ -27,6 +27,7 @@ from app.fetcher import JobSpyFetcher
 from app.job_dedupe import labeled_source_variants
 from app.location_utils import (
     COUNTRY_FILTER_OPTIONS,
+    extract_linkedin_job_id,
     linkedin_job_detail_shell_url,
     job_country_label,
     linkedin_jobs_search_url,
@@ -179,8 +180,9 @@ def chrome_site_behavior_for_url(target_url: str) -> str:
     return "default"
 
 
-def linkedin_expand_javascript() -> str:
-    return """
+def linkedin_expand_javascript(target_job_id: str = "") -> str:
+    guard_prefix = _linkedin_redirect_guard_javascript(target_job_id)
+    expand_body = """
 (() => {
   const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
   const targetPhrases = [
@@ -251,6 +253,83 @@ def linkedin_expand_javascript() -> str:
   return clicked;
 })();
 """.strip()
+    return f"{guard_prefix}\n{expand_body}".strip()
+
+
+def _linkedin_redirect_guard_javascript(target_job_id: str) -> str:
+    # 中文注释：LinkedIn /jobs/view/<id>/ 加载后 SPA 经常会自动跳走——有时是 /jobs/search/?currentJobId=<id>
+    # 搜索壳（右栏会被搜索结果第一条覆盖），有时是 /company/<co>/life/<uuid>/ 公司主页（岗位失效或者
+    # LinkedIn 想推公司品牌时）。这段守护脚本：
+    # 1) 监听 click / keydown / pointerdown / touchstart，记录最近一次用户操作时间；
+    # 2) 覆写 history.pushState / replaceState，
+    #    遇到要跳离 /jobs/view/<id>/ 的 URL 时，如果最近 1.5 秒里没有用户操作就当成 LinkedIn 自动跳转拦掉，
+    #    有过用户操作（点 Apply、点公司、点侧栏其他岗位）就放行，避免误伤；
+    # 3) 如果脚本注入时已经落在了非 /jobs/view/<id>/ 的页面，强制把 location.href 拉回 /jobs/view/<id>/，
+    #    用 sessionStorage 计数器最多重试两次，防止 LinkedIn 反复弹起来造成死循环。
+    safe_job_id = json.dumps(target_job_id or "")
+    return """
+(() => {
+  const targetJobId = __TARGET_JOB_ID__;
+  if (!targetJobId) return;
+  const desiredPathPrefix = '/jobs/view/' + encodeURIComponent(targetJobId);
+  const desiredPath = desiredPathPrefix + '/';
+
+  function isDesiredPath(pathname) {
+    return pathname === desiredPathPrefix || pathname === desiredPath;
+  }
+
+  function isOnDesiredPath() {
+    return isDesiredPath(location.pathname);
+  }
+
+  function isRecentUserInitiated() {
+    const last = window.__resumeJobMonitorLastInteract || 0;
+    return last > 0 && (Date.now() - last) < 1500;
+  }
+
+  function isUndesiredUrl(rawUrl) {
+    if (rawUrl === null || rawUrl === undefined || rawUrl === '') return false;
+    if (isRecentUserInitiated()) return false;
+    try {
+      const u = new URL(String(rawUrl), location.href);
+      if (u.hostname && u.hostname !== location.hostname) return false;
+      if (isDesiredPath(u.pathname)) return false;
+      return true;
+    } catch (e) {}
+    return false;
+  }
+
+  if (!window.__resumeJobMonitorLinkedInGuard) {
+    window.__resumeJobMonitorLinkedInGuard = true;
+    const markInteract = function() { window.__resumeJobMonitorLastInteract = Date.now(); };
+    ['click', 'keydown', 'pointerdown', 'touchstart'].forEach(function(evt) {
+      try { window.addEventListener(evt, markInteract, true); } catch (e) {}
+    });
+    const origPush = history.pushState.bind(history);
+    const origReplace = history.replaceState.bind(history);
+    history.pushState = function(state, title, url) {
+      if (isUndesiredUrl(url)) return undefined;
+      return origPush(state, title, url);
+    };
+    history.replaceState = function(state, title, url) {
+      if (isUndesiredUrl(url)) return undefined;
+      return origReplace(state, title, url);
+    };
+  }
+
+  if (!isOnDesiredPath()) {
+    const flagKey = '__resumeJobMonitorRecover_' + targetJobId;
+    let attempts = 0;
+    try {
+      attempts = parseInt(sessionStorage.getItem(flagKey) || '0', 10) || 0;
+    } catch (e) {}
+    if (attempts < 2) {
+      try { sessionStorage.setItem(flagKey, String(attempts + 1)); } catch (e) {}
+      window.location.href = desiredPath;
+    }
+  }
+})();
+""".strip().replace("__TARGET_JOB_ID__", safe_job_id)
 
 
 def open_url_in_dedicated_chrome_window(
@@ -591,12 +670,13 @@ end waitForTabLoad
     save_browser_window_state(state_path, window_id=next_window_id, marker_url=marker_url)
 
     if site_behavior == "linkedin_auto_expand":
-        # 中文注释：LinkedIn 折叠展开纯属"页面加载完之后再点几个 Show more"的善后步骤，
-        # 完全不影响窗口可见性。把它放后台线程跑，HTTP 响应立刻返回；如果失败也只是
-        # 用户自己手动展开，不影响主流程。
+        # 中文注释：LinkedIn 折叠展开和"阻止跳到搜索壳"的守护脚本绑在一起，都是页面加载后做的
+        # 善后步骤，完全不影响窗口可见性。把它们一起放后台线程跑，HTTP 响应立刻返回；如果失败
+        # 也只是用户自己手动展开 / 看到搜索壳，不影响主流程。
+        target_job_id = extract_linkedin_job_id(target_url)
         threading.Thread(
             target=best_effort_expand_linkedin_window,
-            args=(next_window_id,),
+            args=(next_window_id, target_job_id),
             daemon=True,
             name=f"linkedin-expand-{next_window_id}",
         ).start()
@@ -604,8 +684,8 @@ end waitForTabLoad
     return BrowserWindowOpenResult(window_id=next_window_id, warning="")
 
 
-def best_effort_expand_linkedin_window(window_id: str) -> str:
-    expand_javascript = linkedin_expand_javascript()
+def best_effort_expand_linkedin_window(window_id: str, target_job_id: str = "") -> str:
+    expand_javascript = linkedin_expand_javascript(target_job_id)
     applescript = """
 on run argv
   set existingWindowId to item 1 of argv
@@ -786,9 +866,10 @@ def create_app() -> Flask:
         return " / ".join(item["label"] for item in variants)
 
     def job_browser_target_url(job: JobRecord, *, absolute_preview: bool = False) -> str:
-        # LinkedIn 职位走 /jobs/view/<id>/ 标准详情页。之前拼搜索壳页 + currentJobId 是为了保留双栏，
-        # 但 LinkedIn 前端会在搜索结果异步加载完之后把右栏强制切换到第一条，覆盖 currentJobId，
-        # 用户体验是"先到正确岗位、几秒后跳走"，这里不再走那条路。
+        # 中文注释：LinkedIn 职位走 /jobs/view/<id>/ 标准详情页。即便如此，LinkedIn 前端有时
+        # 会在异步加载完后通过 history.pushState 把当前 URL 翻到 /jobs/search/?currentJobId=<id>
+        # 搜索壳，右栏又会被搜索结果第一条覆盖。下面注入的脚本会在 LinkedIn 页面里
+        # 拦截这种跳转，所以 URL 这里保持指向 /jobs/view/<id>/。
         linkedin_shell_url = linkedin_job_detail_shell_url(job)
         if linkedin_shell_url:
             return linkedin_shell_url

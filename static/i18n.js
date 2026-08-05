@@ -145,6 +145,8 @@
     { zh: "条数", en: "Limit" },
     { zh: "国家", en: "Countries" },
     { zh: "应用筛选", en: "Apply Filters" },
+    { zh: "排除公司管理", en: "Excluded Company Management" },
+    { zh: "已排除", en: "Excluded" },
     { zh: "排除公司", en: "Exclude Company" },
     { zh: "加入排除", en: "Add" },
     { zh: "当前排除列表", en: "Excluded Companies" },
