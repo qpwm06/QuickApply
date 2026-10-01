@@ -825,6 +825,45 @@ textarea {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.jobs-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin: 4px 0 12px;
+}
+
+.jobs-bulk-select-all,
+.job-title-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.jobs-bulk-select-all {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.job-select-checkbox {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  accent-color: var(--primary-strong);
+  cursor: pointer;
+}
+
+.table-row.is-selected {
+  background: rgba(20, 184, 166, 0.06);
+}
+
+.jobs-date-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .jobs-toolbar-form .toolbar-fieldset {
   grid-column: 1 / -1;
 }
@@ -873,6 +912,7 @@ input[type="text"],
 input[type="number"],
 input[type="url"],
 input[type="datetime-local"],
+input[type="date"],
 textarea {
   width: 100%;
   padding: 11px 12px;
@@ -892,6 +932,7 @@ input[type="text"]:focus,
 input[type="number"]:focus,
 input[type="url"]:focus,
 input[type="datetime-local"]:focus,
+input[type="date"]:focus,
 textarea:focus {
   outline: none;
   border-color: var(--primary);
@@ -1554,6 +1595,24 @@ textarea[readonly] {
   color: var(--warn);
 }
 
+.run-status-ok {
+  color: var(--ok);
+}
+
+.run-status-warn,
+.run-status-partial,
+.run-partial {
+  color: #b45309;
+}
+
+.run-status-fail {
+  color: var(--warn);
+}
+
+.run-status-running {
+  color: var(--muted);
+}
+
 .run-pending {
   color: #f59e0b;
 }
@@ -1620,6 +1679,30 @@ textarea[readonly] {
   border-color: rgba(20, 184, 166, 0.35);
   box-shadow: 0 10px 24px rgba(20, 184, 166, 0.08);
   transform: translateY(-1px);
+}
+
+/* 中文注释：追踪图 / 职位 / 抓取记录共用的日期范围小表单。 */
+.tracker-date-form,
+.date-range-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+
+.tracker-date-form label,
+.date-range-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.tracker-date-form .ghost-button.active {
+  color: var(--primary-strong);
+  border-color: rgba(20, 184, 166, 0.35);
 }
 
 .tracker-chart-toggle {

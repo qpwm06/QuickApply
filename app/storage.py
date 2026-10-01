@@ -29,7 +29,7 @@ from app.models import (
     TailorRunStep,
 )
 from app.profile_rules import build_job_record_rule_blob, matches_search_profile_rules
-from app.time_utils import LOCAL_TIMEZONE, to_local_time
+from app.time_utils import LOCAL_TIMEZONE, date_in_range, local_date, to_local_time
 
 
 def normalize_company_name(company: str) -> str:
@@ -86,6 +86,28 @@ def _local_date_bucket(value: datetime | None) -> date | None:
     if local_dt is None:
         return None
     return local_dt.date()
+
+
+JOB_DATE_FIELDS = ("seen", "posted")
+
+
+def job_filter_date(job: JobRecord, date_field: str = "seen") -> date | None:
+    """中文注释：职位日期筛选用的日期。
+    seen = 首次抓到（本地时区日期）；posted = 发布日期。date_posted 是站点给的“纯日期”，
+    存成 naive 零点，不能再按 UTC 转本地，否则会整体早一天。"""
+    if date_field == "posted":
+        return job.date_posted.date() if job.date_posted is not None else None
+    return local_date(job.first_seen_at)
+
+
+def _shift_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    # 中文注释：目标月没有这一天（如 8/31 往前 6 个月）时落到该月最后一天。
+    next_month_first = date(year + (month == 12), month % 12 + 1, 1)
+    last_day = (next_month_first - timedelta(days=1)).day
+    return date(year, month, min(value.day, last_day))
 
 
 def _date_span(start_date: date, end_date: date) -> list[date]:
@@ -476,6 +498,9 @@ class JobRepository:
         exclude_keywords: Sequence[str] | None = None,
         recent_hours: int = 0,
         sort_by: str = "recent",
+        date_from: date | None = None,
+        date_to: date | None = None,
+        date_field: str = "seen",
     ) -> list[JobRecord]:
         jobs = self._load_filtered_jobs(
             profile_slug=profile_slug,
@@ -486,6 +511,9 @@ class JobRepository:
             exclude_keywords=exclude_keywords,
             recent_hours=recent_hours,
             sort_by=sort_by,
+            date_from=date_from,
+            date_to=date_to,
+            date_field=date_field,
         )
         remaining_jobs = [
             job for job in jobs if job.applied_at is None and job.dismissed_at is None
@@ -503,6 +531,9 @@ class JobRepository:
         exclude_keywords: Sequence[str] | None = None,
         recent_hours: int = 0,
         sort_by: str = "recent",
+        date_from: date | None = None,
+        date_to: date | None = None,
+        date_field: str = "seen",
     ) -> dict[str, int]:
         jobs = self._load_filtered_jobs(
             profile_slug=profile_slug,
@@ -513,6 +544,9 @@ class JobRepository:
             exclude_keywords=exclude_keywords,
             recent_hours=recent_hours,
             sort_by=sort_by,
+            date_from=date_from,
+            date_to=date_to,
+            date_field=date_field,
         )
         counts = {
             "remaining_count": 0,
@@ -559,6 +593,9 @@ class JobRepository:
         exclude_keywords: Sequence[str] | None = None,
         recent_hours: int = 0,
         sort_by: str = "recent",
+        date_from: date | None = None,
+        date_to: date | None = None,
+        date_field: str = "seen",
     ) -> list[JobRecord]:
         statement = self._build_jobs_statement(
             profile_slug=profile_slug,
@@ -590,6 +627,8 @@ class JobRepository:
                 include_keywords=include_keywords,
                 exclude_keywords=exclude_keywords,
             ):
+                continue
+            if not date_in_range(job_filter_date(job, date_field), date_from, date_to):
                 continue
             filtered.append(job)
         return filtered
@@ -684,6 +723,23 @@ class JobRepository:
             session.commit()
             session.refresh(job)
             return job
+
+    def dismiss_jobs(self, job_ids: Sequence[int], *, dismissed_at: datetime) -> list[int]:
+        """中文注释：批量标记不合适。已投递或已标记过的职位跳过，返回实际被标记的 id。"""
+        unique_ids = sorted({int(job_id) for job_id in job_ids})
+        if not unique_ids:
+            return []
+        dismissed_ids: list[int] = []
+        with Session(self.engine) as session:
+            rows = session.exec(select(JobRecord).where(JobRecord.id.in_(unique_ids))).all()
+            for job in rows:
+                if job.applied_at is not None or job.dismissed_at is not None:
+                    continue
+                job.dismissed_at = dismissed_at
+                session.add(job)
+                dismissed_ids.append(int(job.id))
+            session.commit()
+        return sorted(dismissed_ids)
 
     def update_job_application(
         self,
@@ -949,6 +1005,8 @@ class JobRepository:
         *,
         range_key: str = "all",
         reference_time: datetime | None = None,
+        custom_start: date | None = None,
+        custom_end: date | None = None,
     ) -> dict[str, object]:
         normalized_reference = reference_time or datetime.now(timezone.utc)
         if normalized_reference.tzinfo is None:
@@ -1019,6 +1077,21 @@ class JobRepository:
         elif range_key == "month":
             start_date = today_local.replace(day=1)
             end_date = today_local
+        elif range_key == "quarter":
+            # 中文注释：当季 = 自然季度（1/4/7/10 月 1 日起）到今天。
+            quarter_start_month = 3 * ((today_local.month - 1) // 3) + 1
+            start_date = today_local.replace(month=quarter_start_month, day=1)
+            end_date = today_local
+        elif range_key == "half_year":
+            # 中文注释：近半年 = 今天往前推 6 个自然月（同日），含今天。
+            start_date = _shift_months(today_local, -6) + timedelta(days=1)
+            end_date = today_local
+        elif range_key == "custom" and (custom_start or custom_end):
+            # 中文注释：自定义只给起始日 = 起始日到今天；只给截止日 = 最早记录到截止日。
+            start_date = custom_start or (min(discovered_dates) if discovered_dates else custom_end)
+            end_date = custom_end or today_local
+            if start_date > end_date:
+                start_date, end_date = end_date, start_date
         else:
             if not discovered_dates:
                 return {
@@ -1131,6 +1204,30 @@ class JobRepository:
             }
             for row in rows
         ]
+
+    def delete_refresh_runs(
+        self,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> int:
+        """中文注释：按开始时间的本地日期删除抓取记录（含首尾两天）。
+        只给 start_date = 该日及以后；只给 end_date = 该日及以前；两个都不给则不删除，避免误清空。"""
+        if start_date is None and end_date is None:
+            return 0
+        with Session(self.engine) as session:
+            runs = session.exec(select(RefreshRun)).all()
+            deleted = 0
+            for run in runs:
+                if date_in_range(local_date(run.started_at), start_date, end_date):
+                    session.delete(run)
+                    deleted += 1
+            session.commit()
+        return deleted
+
+    def count_refresh_runs(self) -> int:
+        with Session(self.engine) as session:
+            return int(session.exec(select(func.count(RefreshRun.id))).one() or 0)
 
     def latest_refresh_runs(self, limit: int = 8) -> list[RefreshRun]:
         statement = select(RefreshRun).order_by(desc(RefreshRun.started_at)).limit(limit)

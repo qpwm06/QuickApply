@@ -14,25 +14,84 @@ from dateutil import parser as date_parser
 from app.config import ROOT_DIR, SearchProfileConfig
 from app.job_dedupe import build_job_dedupe_key
 
+# 中文注释：每个站点单独调用 scrape_jobs 并行跑，互不拖累——
+# 以前三个站点放在一次 scrape_jobs 里，Indeed 抛一个 SSLError 就会把 LinkedIn 已经抓到的结果一起丢掉。
+# LinkedIn 失败时 jobspy 只打 ERROR 日志不抛异常，所以额外挂一个 logging handler 把它记成站点错误。
+# 输出 {"rows": [...], "site_errors": {site: "一行错误"}}；超过 site_timeout_seconds 的站点记为超时。
 JOBSPY_RUNNER = r"""
 import json
+import logging
+import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from jobspy import scrape_jobs
 
 payload = json.loads(sys.argv[1])
-frame = scrape_jobs(
-    site_name=payload["sites"],
-    search_term=payload["search_term"],
-    location=payload["location"],
-    results_wanted=payload["results_wanted"],
-    hours_old=payload["hours_old"],
-    country_indeed=payload["country_indeed"],
-    proxies=payload.get("proxies"),
-    verbose=0,
-)
-rows = [] if frame is None else frame.to_dict(orient="records")
-json.dump(rows, sys.stdout, default=str)
+sites = list(payload["sites"])
+site_timeout = float(payload.get("site_timeout_seconds") or 60)
+logged_errors = {}
+
+
+def site_key(name):
+    return name.lower().replace("_", "").replace(" ", "")
+
+
+class SiteErrorCollector(logging.Handler):
+    def emit(self, record):
+        if record.levelno < logging.ERROR:
+            return
+        name = record.name.split(":", 1)[-1]
+        logged_errors.setdefault(site_key(name), record.getMessage().splitlines()[0][:300])
+
+
+collector = SiteErrorCollector(level=logging.ERROR)
+for logger_name in list(logging.root.manager.loggerDict):
+    if logger_name.startswith("JobSpy"):
+        logging.getLogger(logger_name).addHandler(collector)
+
+
+def run_site(site):
+    frame = scrape_jobs(
+        site_name=[site],
+        search_term=payload["search_term"],
+        location=payload["location"],
+        results_wanted=payload["results_wanted"],
+        hours_old=payload["hours_old"],
+        country_indeed=payload["country_indeed"],
+        proxies=payload.get("proxies"),
+        verbose=0,
+    )
+    return [] if frame is None else frame.to_dict(orient="records")
+
+
+def short_error(exc):
+    text = f"{type(exc).__name__}: {exc}".splitlines()[0]
+    return text if len(text) <= 300 else text[:300] + "..."
+
+
+pool = ThreadPoolExecutor(max_workers=max(1, len(sites)))
+futures = {pool.submit(run_site, site): site for site in sites}
+done, pending = wait(futures, timeout=site_timeout)
+rows = []
+site_errors = {}
+for future in done:
+    site = futures[future]
+    try:
+        site_rows = future.result()
+    except Exception as exc:
+        site_errors[site] = short_error(exc)
+        continue
+    rows.extend(site_rows)
+    if not site_rows and site_key(site) in logged_errors:
+        site_errors[site] = logged_errors[site_key(site)]
+for future in pending:
+    site_errors[futures[future]] = f"timed out after {site_timeout:.0f}s"
+
+json.dump({"rows": rows, "site_errors": site_errors}, sys.stdout, default=str)
+sys.stdout.flush()
+# 中文注释：超时站点的线程还挂着，直接退出进程，不等它们。
+os._exit(0)
 """
 
 
@@ -61,7 +120,11 @@ class FetchedJob:
 def _as_text(value: Any) -> str:
     if value is None:
         return ""
-    return str(value).strip()
+    # 中文注释：jobspy/pandas 的缺失值是 float NaN，直接 str() 会把 "nan" 存进数据库。
+    if isinstance(value, float) and value != value:
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() in {"nan", "<na>", "nat"} else text
 
 
 def _as_float(value: Any) -> float | None:
@@ -90,6 +153,27 @@ def _parse_date(value: Any) -> datetime | None:
         return date_parser.parse(str(value))
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+def _summarize_stderr(stderr: str) -> str:
+    """中文注释：子进程崩溃时只保留最后一行（通常就是异常本身），不再把整段 INFO 日志和堆栈存进抓取记录。"""
+    lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+    if not lines:
+        return ""
+    last_line = lines[-1]
+    return last_line if len(last_line) <= 400 else last_line[:400] + "..."
+
+
+def _split_runner_output(output: Any) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    # 中文注释：兼容旧版 runner 直接输出 list 的格式。
+    if isinstance(output, dict):
+        rows = output.get("rows") or []
+        site_errors = {
+            str(site): str(message)
+            for site, message in (output.get("site_errors") or {}).items()
+        }
+        return list(rows), site_errors
+    return list(output or []), {}
 
 
 def _to_proxy_url(raw_line: str) -> str:
@@ -150,6 +234,8 @@ class JobSpyFetcher:
         self.proxy_urls = load_proxy_urls(proxy_file)
 
     _RETRY_DELAYS_SECONDS = (5, 15)
+    # 中文注释：连续这么多条 query 都因网络错误（重试后仍失败）就判定断网，跳过剩余 query。
+    _NETWORK_FAILURE_LIMIT = 2
     _RETRYABLE_HINTS = (
         "timeout",
         "timed out",
@@ -171,7 +257,7 @@ class JobSpyFetcher:
         profile: SearchProfileConfig,
         search_term: str,
         location: str,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         payload = {
             "sites": profile.sites,
             "search_term": search_term,
@@ -180,6 +266,8 @@ class JobSpyFetcher:
             "hours_old": profile.hours_old,
             "country_indeed": profile.country_indeed,
             "proxies": self.proxy_urls or None,
+            # 中文注释：站点级超时比整个子进程超时短一点，保证慢站点被单独记超时，其他站点结果还能带回来。
+            "site_timeout_seconds": max(10, self.timeout_seconds - 10),
         }
         result = subprocess.run(
             [sys.executable, "-c", JOBSPY_RUNNER, json.dumps(payload)],
@@ -189,9 +277,9 @@ class JobSpyFetcher:
             check=False,
         )
         if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or "jobspy subprocess failed")
+            raise RuntimeError(_summarize_stderr(result.stderr) or "jobspy subprocess failed")
         if not result.stdout.strip():
-            return []
+            return {"rows": [], "site_errors": {}}
         return json.loads(result.stdout)
 
     def _run_query(
@@ -199,14 +287,22 @@ class JobSpyFetcher:
         profile: SearchProfileConfig,
         search_term: str,
         location: str,
-    ) -> tuple[list[dict[str, Any]], int, list[str]]:
+    ) -> tuple[list[dict[str, Any]], int, list[str], dict[str, str]]:
         attempts = 0
         retry_errors: list[str] = []
         for attempt_index in range(len(self._RETRY_DELAYS_SECONDS) + 1):
             attempts += 1
             try:
-                rows = self._invoke_jobspy(profile, search_term, location)
-                return rows, attempts - 1, retry_errors
+                rows, site_errors = _split_runner_output(
+                    self._invoke_jobspy(profile, search_term, location)
+                )
+                # 中文注释：所有站点都失败才算整条 query 失败，交给下面的重试逻辑；部分失败直接返回。
+                requested_sites = set(profile.sites)
+                if not rows and requested_sites and requested_sites <= set(site_errors):
+                    raise RuntimeError(
+                        "; ".join(f"{site}: {site_errors[site]}" for site in sorted(requested_sites))
+                    )
+                return rows, attempts - 1, retry_errors, site_errors
             except Exception as exc:
                 if attempt_index >= len(self._RETRY_DELAYS_SECONDS) or not self._is_retryable_error(exc):
                     raise
@@ -221,18 +317,38 @@ class JobSpyFetcher:
         jobs: list[FetchedJob] = []
         warnings: list[str] = []
         query_details: list[dict[str, Any]] = []
+        consecutive_network_failures = 0
+        network_down = False
 
         for search_term in profile.search_terms:
             for location in profile.locations:
+                if network_down:
+                    # 中文注释：网络已确认不可用（比如电脑休眠/断网时定时任务触发），剩余 query 直接跳过，
+                    # 不再每条都等满 超时 × 重试 次数。
+                    query_details.append(
+                        {
+                            "search_term": search_term,
+                            "location": location,
+                            "requested_sites": list(profile.sites),
+                            "sites_seen": [],
+                            "row_count": 0,
+                            "status": "skipped",
+                            "error": "skipped: network unavailable",
+                            "retry_count": 0,
+                            "retry_errors": [],
+                            "site_errors": {},
+                        }
+                    )
+                    continue
                 try:
-                    rows, retry_count, retry_errors = self._run_query(
+                    rows, retry_count, retry_errors, site_errors = self._run_query(
                         profile, search_term, location
                     )
                 except Exception as exc:  # pragma: no cover - network path
-                    warning_text = (
-                        f"{profile.slug}: query={search_term!r}, location={location!r}, error={exc}"
+                    error_text = str(exc)
+                    warnings.append(
+                        f"{profile.slug}: query={search_term!r}, location={location!r}, error={error_text}"
                     )
-                    warnings.append(warning_text)
                     query_details.append(
                         {
                             "search_term": search_term,
@@ -241,12 +357,24 @@ class JobSpyFetcher:
                             "sites_seen": [],
                             "row_count": 0,
                             "status": "error",
-                            "error": str(exc),
+                            "error": error_text,
                             "retry_count": len(self._RETRY_DELAYS_SECONDS),
                             "retry_errors": [],
+                            "site_errors": {},
                         }
                     )
+                    if self._is_retryable_error(exc):
+                        consecutive_network_failures += 1
+                        if consecutive_network_failures >= self._NETWORK_FAILURE_LIMIT:
+                            network_down = True
+                            warnings.append(
+                                f"{profile.slug}: {consecutive_network_failures} consecutive queries failed with "
+                                "network errors; skipped the remaining queries"
+                            )
+                    else:
+                        consecutive_network_failures = 0
                     continue
+                consecutive_network_failures = 0
 
                 sites_seen = sorted(
                     {
@@ -262,16 +390,21 @@ class JobSpyFetcher:
                         "requested_sites": list(profile.sites),
                         "sites_seen": sites_seen,
                         "row_count": len(rows),
-                        "status": "ok" if rows else "empty",
+                        "status": "partial" if site_errors else ("ok" if rows else "empty"),
                         "error": "",
                         "retry_count": retry_count,
                         "retry_errors": retry_errors,
+                        "site_errors": site_errors,
                         "results_wanted": profile.results_wanted,
                     }
                 )
                 if retry_count:
                     warnings.append(
                         f"{profile.slug}: query={search_term!r}, location={location!r} succeeded after {retry_count} retr{'y' if retry_count == 1 else 'ies'}"
+                    )
+                for site, site_error in sorted(site_errors.items()):
+                    warnings.append(
+                        f"{profile.slug}: query={search_term!r}, location={location!r}, site={site} failed: {site_error}"
                     )
 
                 if not rows:

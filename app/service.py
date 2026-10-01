@@ -111,7 +111,10 @@ class JobMonitorService:
                 profile_label=profile.label,
                 started_at=started_at,
                 finished_at=finished_at,
-                success=not warnings,
+                # 中文注释：重试后成功、单个站点失败只算警告；只有整条 query 失败/被跳过才算这次抓取失败。
+                success=not any(
+                    detail.get("status") in {"error", "skipped"} for detail in query_details
+                ),
                 jobs_seen=len(fetched_jobs),
                 jobs_saved=jobs_saved,
                 warnings_text="\n".join(warnings),

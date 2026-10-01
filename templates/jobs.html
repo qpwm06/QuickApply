@@ -65,6 +65,26 @@
         <input type="number" name="limit" value="{{ limit }}" min="10" max="200" step="10" />
       </label>
 
+      <label>
+        日期依据
+        <select name="date_field">
+          <option value="seen" {% if date_field == "seen" %}selected{% endif %}>首次抓到</option>
+          <option value="posted" {% if date_field == "posted" %}selected{% endif %}>发布日期</option>
+        </select>
+      </label>
+
+      <label title="只填起始日期 = 从该日往后">
+        起始日期
+        <input type="date" name="date_from" value="{{ date_from }}" />
+      </label>
+
+      <label title="只填截止日期 = 到该日为止（往前）">
+        截止日期
+        <input type="date" name="date_to" value="{{ date_to }}" />
+      </label>
+
+      <p class="muted-copy jobs-date-hint">日期范围含首尾两天；只填一个日期即可：只填起始 = 该日及以后，只填截止 = 该日及以前。按发布日期筛选时，没有发布日期的职位会被排除。</p>
+
       <fieldset class="toolbar-fieldset">
         <legend>国家</legend>
         <div class="country-options">
@@ -137,6 +157,23 @@
     </div>
 
     {% if jobs_view %}
+    <form
+      id="jobs-bulk-form"
+      method="post"
+      action="{{ url_for('dismiss_jobs_bulk') }}"
+      class="jobs-bulk-bar"
+      data-jobs-bulk-form
+    >
+      <input type="hidden" name="return_to" value="{{ current_query_url }}" />
+      <label class="jobs-bulk-select-all">
+        <input type="checkbox" data-jobs-select-all />
+        <span>全选本页</span>
+      </label>
+      <button type="submit" class="ghost-button" data-jobs-bulk-submit disabled>
+        将选中标记为不合适（<span data-jobs-selected-count>0</span>）
+      </button>
+      <span class="muted-copy">先用上面的筛选缩小范围，再勾选后批量处理。</span>
+    </form>
     <div class="table-shell" id="jobs-table-shell">
         <div class="table-header job-grid">
           <span>职位</span>
@@ -154,6 +191,16 @@
       {% for item in jobs_view %}
       <article class="table-row job-grid" data-job-row="{{ item.job.id }}">
         <div class="cell-stack">
+          <div class="job-title-line">
+          <input
+            type="checkbox"
+            name="job_ids"
+            value="{{ item.job.id }}"
+            form="jobs-bulk-form"
+            class="job-select-checkbox"
+            aria-label="选中该职位"
+            data-job-select
+          />
           <button
             type="button"
             class="row-title row-title-button"
@@ -161,6 +208,7 @@
             data-open-url="{{ job_browser_target_url(item.job) }}"
             data-browser-window-route="{{ url_for('open_job_browser_window', job_id=item.job.id) }}"
           >{{ item.job.title }}</button>
+          </div>
           <div class="row-inline-actions">
             <p class="row-subtitle">{{ item.job.company }}</p>
             <form method="post" action="{{ url_for('exclude_job_company', job_id=item.job.id) }}" class="inline-action-form" data-job-action-form>
@@ -192,7 +240,7 @@
         <div class="cell-stack">
           <span>{{ item.job.first_seen_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
           {% if item.job.date_posted %}
-          <span class="row-subtitle">发布 {{ item.job.date_posted|localtime("%Y-%m-%d") }}</span>
+          <span class="row-subtitle">发布 {{ item.job.date_posted.strftime("%Y-%m-%d") }}</span>
           {% endif %}
           {% if item.job.applied_at %}
           <span class="row-subtitle">投递 {{ item.job.applied_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
@@ -289,6 +337,40 @@
       syncEmptyState();
       return true;
     }
+
+    // 中文注释：批量“不合适”——勾选状态只存在当前 DOM 里，表格局部刷新后自然清空。
+    function syncBulkSelection() {
+      const boxes = Array.from(document.querySelectorAll("[data-job-select]"));
+      const checked = boxes.filter((box) => box.checked);
+      for (const box of boxes) {
+        box.closest("[data-job-row]")?.classList.toggle("is-selected", box.checked);
+      }
+      const counter = document.querySelector("[data-jobs-selected-count]");
+      if (counter) counter.textContent = String(checked.length);
+      const submit = document.querySelector("[data-jobs-bulk-submit]");
+      if (submit) submit.disabled = checked.length === 0;
+      const selectAll = document.querySelector("[data-jobs-select-all]");
+      if (selectAll instanceof HTMLInputElement) {
+        selectAll.checked = boxes.length > 0 && checked.length === boxes.length;
+        selectAll.indeterminate = checked.length > 0 && checked.length < boxes.length;
+      }
+      return checked.length;
+    }
+
+    document.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (target.matches("[data-jobs-select-all]")) {
+        for (const box of document.querySelectorAll("[data-job-select]")) {
+          box.checked = target.checked;
+        }
+        syncBulkSelection();
+        return;
+      }
+      if (target.matches("[data-job-select]")) {
+        syncBulkSelection();
+      }
+    });
 
     function jobsFilterForm() {
       return document.querySelector("#jobs-filters form[method='get'], #jobs-filters form[method='GET']");
@@ -614,6 +696,36 @@
           renderMessage(
             error instanceof Error ? error.message : runtimeText("requestFailed", { status: "unknown" }, "请求失败，请查看终端日志。"),
           );
+        }
+        return;
+      }
+
+      if (form.matches("[data-jobs-bulk-form]")) {
+        event.preventDefault();
+        const selectedCount = syncBulkSelection();
+        if (!selectedCount) return;
+        const confirmText =
+          runtimeText("jobsBulkDismissConfirm", { count: selectedCount }, "") ||
+          `确定把选中的 ${selectedCount} 个职位标记为不合适吗？`;
+        if (!window.confirm(confirmText)) return;
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton) submitButton.disabled = true;
+        try {
+          const data = await submitJobAction(form, { timeoutMs: 15000 });
+          renderMessage(data.message || "操作已完成。");
+          for (const jobId of data.job_ids || []) {
+            removeJobRowLocally(String(jobId));
+          }
+          updateJobsSummaryCounts(data.summary_delta || {});
+          await loadJobsView(window.location.href, { pushHistory: false });
+        } catch (error) {
+          console.error(error);
+          renderMessage(
+            error instanceof Error ? error.message : runtimeText("requestFailed", { status: "unknown" }, "请求失败，请查看终端日志。"),
+          );
+          submitFormNatively(form);
+        } finally {
+          if (submitButton) submitButton.disabled = false;
         }
         return;
       }

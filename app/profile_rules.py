@@ -63,11 +63,21 @@ def matches_search_profile_rules(
     )
 
 
+def has_real_description(description: str | None) -> bool:
+    return str(description or "").strip().lower() not in {"", "nan", "none", "<na>"}
+
+
+def _search_term_fallback(search_term: str, description: str | None) -> str:
+    # 中文注释：search_term 只在没有真实描述时作为兜底证据；有描述时不拼进来，
+    # 否则 require_any_keywords 会被 search_term 自身"自动满足"，过滤形同虚设。
+    return "" if has_real_description(description) else search_term
+
+
 def build_fetched_job_rule_blob(job: FetchedJob) -> str:
     return build_profile_rule_blob(
         job.title,
         job.company,
-        job.search_term,
+        _search_term_fallback(job.search_term, job.description),
         job.location_text,
         job.city,
         job.state,
@@ -80,7 +90,7 @@ def build_job_record_rule_blob(job: JobRecord) -> str:
     return build_profile_rule_blob(
         job.title,
         job.company,
-        job.search_term,
+        _search_term_fallback(job.search_term, job.description),
         job.location_text,
         job.city,
         job.state,

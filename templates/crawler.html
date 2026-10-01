@@ -301,7 +301,36 @@
         <p class="section-kicker">抓取记录</p>
         <h3>快速看每次抓取的产出和异常</h3>
       </div>
+      <div class="tracker-range-switch">
+        {% for option in runs_limit_options %}
+        <a
+          href="{{ url_for('crawler', runs_limit=option) }}#crawler-history"
+          class="tracker-range-link {% if runs_limit == option %}active{% endif %}"
+        >最近 {{ option }} 条</a>
+        {% endfor %}
+      </div>
     </div>
+
+    <p class="muted-copy">共 {{ refresh_run_total }} 条抓取记录。状态说明：重试后成功或单个站点失败记为“成功（有警告）”，部分 query 失败记为“部分失败”。</p>
+
+    <form
+      method="post"
+      action="{{ url_for('delete_crawler_runs') }}"
+      class="date-range-form"
+      data-native-scroll-restore
+      onsubmit="return window.confirm(window.resumeJobMonitor?.translateText?.('确定删除所选日期范围内的抓取记录吗？此操作不可撤销。') || '确定删除所选日期范围内的抓取记录吗？此操作不可撤销。');"
+    >
+      <label>
+        起始日期
+        <input type="date" name="run_date_from" />
+      </label>
+      <label>
+        截止日期
+        <input type="date" name="run_date_to" />
+      </label>
+      <button type="submit" class="ghost-button">删除该日期范围的记录</button>
+      <span class="muted-copy">按开始时间（{{ local_timezone_label }}）计算，含首尾两天；只填起始 = 该日及以后，只填截止 = 该日及以前。只删除记录，不影响已抓到的职位。</span>
+    </form>
 
     <div class="table-shell">
       <div class="table-header crawler-history-grid">
@@ -321,9 +350,7 @@
         <span>{{ run.finished_at|localtime("%Y-%m-%d %H:%M %Z") if run.finished_at else "进行中" }}</span>
         <span>{{ run.jobs_seen }}</span>
         <span>{{ run.jobs_saved }}</span>
-        <span class="{% if run.success %}run-ok{% else %}run-warn{% endif %}">
-          {% if run.success %}成功{% else %}失败{% endif %}
-        </span>
+        <span class="run-status-{{ item.status_key }}">{{ item.status_label }}</span>
         <span>
           <a href="{{ url_for('crawler_run_detail', run_id=run.id) }}" class="ghost-link">查看详情</a>
         </span>

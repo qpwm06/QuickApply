@@ -6,7 +6,7 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -45,9 +45,15 @@ from app.scoring import (
     TITLE_WEIGHT,
 )
 from app.service import JobMonitorService
-from app.storage import JobRepository
+from app.storage import JOB_DATE_FIELDS, JobRepository
 from app.tailor_service import TAILOR_STEP_LABELS, TailorService, split_revision_advice
-from app.time_utils import LOCAL_TIMEZONE, LOCAL_TIMEZONE_LABEL, format_local_time
+from app.time_utils import (
+    LOCAL_TIMEZONE,
+    LOCAL_TIMEZONE_LABEL,
+    format_local_time,
+    normalize_date_range,
+    parse_date_input,
+)
 
 TRACK_STAGE_OPTIONS = ("submitted", "introduced", "interviewed", "paneled", "failed")
 TRACK_STAGE_LABELS = {
@@ -62,7 +68,10 @@ TRACKER_CHART_RANGE_LABELS = {
     "7d": "7 日",
     "month": "本月",
     "30d": "30 日",
+    "quarter": "当季",
+    "half_year": "近半年",
 }
+CRAWLER_RUN_LIMIT_OPTIONS = (10, 30, 100, 300)
 TRACKER_CHART_SERIES = (
     {"key": "applied", "label": "投递", "color": "#14b8a6"},
     {"key": "crawled", "label": "爬取", "color": "#0ea5e9"},
@@ -985,16 +994,38 @@ def create_app() -> Flask:
                 "row_count": int(item.get("row_count") or 0),
                 "status": str(item.get("status") or "unknown"),
                 "error": str(item.get("error") or "").strip(),
+                "site_errors": {
+                    str(site): str(message)
+                    for site, message in (item.get("site_errors") or {}).items()
+                } if isinstance(item.get("site_errors"), dict) else {},
             }
             for item in raw_query_details
             if isinstance(item, dict)
         ] if isinstance(raw_query_details, list) else []
+
+        # 中文注释：状态按 query 粒度重新判定，老记录（以前“重试成功也算失败”）也能显示正确。
+        failed_query_count = sum(
+            1 for detail in query_details if detail["status"] in {"error", "skipped"}
+        )
+        if run.finished_at is None:
+            status_key, status_label = "running", "进行中"
+        elif query_details:
+            if failed_query_count == 0:
+                status_key, status_label = ("warn", "成功（有警告）") if warnings else ("ok", "成功")
+            elif failed_query_count == len(query_details):
+                status_key, status_label = "fail", "失败"
+            else:
+                status_key, status_label = "partial", f"部分失败 {failed_query_count}/{len(query_details)}"
+        else:
+            status_key, status_label = ("ok", "成功") if run.success else ("fail", "失败")
 
         return {
             "run": run,
             "result": result,
             "warnings": warnings,
             "query_details": query_details,
+            "status_key": status_key,
+            "status_label": status_label,
             "requested_sites": [
                 str(site).strip()
                 for site in ((result.get("requested_sites") or []) if isinstance(result, dict) else [])
@@ -1097,6 +1128,9 @@ def create_app() -> Flask:
         exclude_keywords: list[str] | None = None,
         recent_hours: int = 0,
         sort_by: str = "recent",
+        date_from: date | None = None,
+        date_to: date | None = None,
+        date_field: str = "seen",
     ) -> list[dict[str, object]]:
         jobs = repository.list_jobs(
             profile_slug=profile_slug,
@@ -1108,6 +1142,9 @@ def create_app() -> Flask:
             exclude_keywords=exclude_keywords,
             recent_hours=recent_hours,
             sort_by=sort_by,
+            date_from=date_from,
+            date_to=date_to,
+            date_field=date_field,
         )
         return [
             {
@@ -1333,10 +1370,17 @@ def create_app() -> Flask:
             )
         return views
 
-    def build_application_track_chart_view(*, range_key: str) -> dict[str, object]:
+    def build_application_track_chart_view(
+        *,
+        range_key: str,
+        custom_start: date | None = None,
+        custom_end: date | None = None,
+    ) -> dict[str, object]:
         chart_data = repository.application_track_daily_counts(
             range_key=range_key,
             reference_time=datetime.now(timezone.utc),
+            custom_start=custom_start,
+            custom_end=custom_end,
         )
         svg_height = 320
         plot_top = 18
@@ -2429,6 +2473,9 @@ def create_app() -> Flask:
         service = web_app.config["service"]
         scheduler = web_app.config["scheduler"]
         message = request.args.get("message", "")
+        runs_limit = request.args.get("runs_limit", default=10, type=int)
+        if runs_limit not in CRAWLER_RUN_LIMIT_OPTIONS:
+            runs_limit = 10
         next_run = None
         scheduled_job = scheduler.get_job("refresh-all-profiles")
         if scheduled_job is not None:
@@ -2455,7 +2502,10 @@ def create_app() -> Flask:
             overview=repository.overview_counts(),
             profiles=service.enabled_profiles(),
             profiles_view=build_profiles_view(),
-            refresh_runs=[build_refresh_run_view(run) for run in repository.latest_refresh_runs(limit=10)],
+            refresh_runs=[build_refresh_run_view(run) for run in repository.latest_refresh_runs(limit=runs_limit)],
+            runs_limit=runs_limit,
+            runs_limit_options=CRAWLER_RUN_LIMIT_OPTIONS,
+            refresh_run_total=repository.count_refresh_runs(),
             next_run=next_run,
             source_site_overview=repository.source_site_overview(),
             scoring_model=build_scoring_model(),
@@ -2466,6 +2516,28 @@ def create_app() -> Flask:
                 if service.enabled_profiles()
                 else ""
             ),
+        )
+
+    @web_app.post("/crawler/runs/delete")
+    def delete_crawler_runs():
+        start_date, end_date = normalize_date_range(
+            parse_date_input(request.form.get("run_date_from")),
+            parse_date_input(request.form.get("run_date_to")),
+        )
+        if start_date is None and end_date is None:
+            return redirect(url_for("crawler", message="请至少选择一个日期再删除抓取记录。") + "#crawler-history")
+        refresh_state = web_app.config["refresh_state"]
+        if refresh_state.get("running"):
+            return redirect(url_for("crawler", message="抓取正在进行，结束后再删除记录。") + "#crawler-history")
+        deleted = repository.delete_refresh_runs(start_date=start_date, end_date=end_date)
+        if start_date and end_date:
+            range_label = f"{start_date.isoformat()} 至 {end_date.isoformat()}"
+        elif start_date:
+            range_label = f"{start_date.isoformat()} 及以后"
+        else:
+            range_label = f"{end_date.isoformat()} 及以前"
+        return redirect(
+            url_for("crawler", message=f"已删除 {range_label}的 {deleted} 条抓取记录。") + "#crawler-history"
         )
 
     @web_app.get("/crawler/runs/<int:run_id>")
@@ -2509,6 +2581,18 @@ def create_app() -> Flask:
         sort_by = request.args.get("sort_by", "recent").strip()
         if sort_by not in {"recent", "score"}:
             sort_by = "recent"
+        date_from, date_to = normalize_date_range(
+            parse_date_input(request.args.get("date_from")),
+            parse_date_input(request.args.get("date_to")),
+        )
+        date_field = request.args.get("date_field", "seen").strip()
+        if date_field not in JOB_DATE_FIELDS:
+            date_field = "seen"
+        date_query = {
+            "date_from": date_from.isoformat() if date_from else "",
+            "date_to": date_to.isoformat() if date_to else "",
+            "date_field": date_field,
+        }
         include_keywords = split_multiline_input(include_keywords_raw)
         exclude_keywords = split_multiline_input(exclude_keywords_raw)
         selected_countries = normalize_selected_countries(request.args.getlist("countries"))
@@ -2522,6 +2606,9 @@ def create_app() -> Flask:
             exclude_keywords=exclude_keywords,
             recent_hours=recent_hours,
             sort_by=sort_by,
+            date_from=date_from,
+            date_to=date_to,
+            date_field=date_field,
         )
         jobs_view = build_jobs_view(
             profile_slug=profile_slug or None,
@@ -2533,6 +2620,9 @@ def create_app() -> Flask:
             exclude_keywords=exclude_keywords,
             recent_hours=recent_hours,
             sort_by=sort_by,
+            date_from=date_from,
+            date_to=date_to,
+            date_field=date_field,
         )
         excluded_companies = repository.list_excluded_companies()
 
@@ -2550,6 +2640,7 @@ def create_app() -> Flask:
                 recent_hours=recent_hours,
                 sort_by="recent",
                 countries=selected_countries,
+                **{key: value for key, value in date_query.items() if value},
             ),
             "score": url_for(
                 "jobs_page",
@@ -2562,6 +2653,7 @@ def create_app() -> Flask:
                 recent_hours=recent_hours,
                 sort_by="score",
                 countries=selected_countries,
+                **{key: value for key, value in date_query.items() if value},
             ),
         }
 
@@ -2602,6 +2694,9 @@ def create_app() -> Flask:
             exclude_keywords=exclude_keywords_raw,
             current_query_url=current_query_url,
             jobs_sort_urls=jobs_sort_urls,
+            date_from=date_query["date_from"],
+            date_to=date_query["date_to"],
+            date_field=date_field,
             excluded_companies=excluded_companies,
         )
 
@@ -2704,6 +2799,41 @@ def create_app() -> Flask:
             )
         return redirect(f"{redirect_target}{separator}message={message}")
 
+    @web_app.post("/jobs/dismiss-bulk")
+    def dismiss_jobs_bulk():
+        return_to = request.form.get("return_to", "")
+        redirect_target = (
+            strip_message_query(return_to)
+            if return_to.startswith("/") and not return_to.startswith("//")
+            else url_for("jobs_page")
+        )
+        separator = "&" if "?" in redirect_target else "?"
+        job_ids = [
+            int(raw_id)
+            for raw_id in request.form.getlist("job_ids")
+            if str(raw_id).strip().isdigit()
+        ]
+        if not job_ids:
+            message = "没有选中任何职位。"
+            if is_async_request():
+                return json_message(message, status=400)
+            return redirect(f"{redirect_target}{separator}message={message}")
+
+        dismissed_ids = repository.dismiss_jobs(job_ids, dismissed_at=datetime.now(timezone.utc))
+        message = f"已将 {len(dismissed_ids)} 个职位标记为不合适。"
+        if is_async_request():
+            return json_message(
+                message,
+                payload={
+                    "job_ids": dismissed_ids,
+                    "summary_delta": {
+                        "remaining_count": -len(dismissed_ids),
+                        "reviewed_count": len(dismissed_ids),
+                    },
+                },
+            )
+        return redirect(f"{redirect_target}{separator}message={message}")
+
     @web_app.post("/jobs/<int:job_id>/dismiss")
     def dismiss_job(job_id: int):
         return_to = request.form.get("return_to", "")
@@ -2743,7 +2873,14 @@ def create_app() -> Flask:
         if stage not in TRACK_STAGE_OPTIONS:
             stage = ""
         chart_range = request.args.get("chart_range", "all").strip().lower()
-        if chart_range not in TRACKER_CHART_RANGE_LABELS:
+        chart_start, chart_end = normalize_date_range(
+            parse_date_input(request.args.get("chart_start")),
+            parse_date_input(request.args.get("chart_end")),
+        )
+        # 中文注释：填了自定义日期就以自定义为准；没填日期时 custom 退回总时间。
+        if chart_start or chart_end:
+            chart_range = "custom"
+        elif chart_range not in TRACKER_CHART_RANGE_LABELS:
             chart_range = "all"
         limit = request.args.get("limit", default=50, type=int)
         current_query_params: dict[str, object] = {}
@@ -2755,12 +2892,17 @@ def create_app() -> Flask:
             current_query_params["stage"] = stage
         if limit != 50:
             current_query_params["limit"] = limit
-        if chart_range != "all":
-            current_query_params["chart_range"] = chart_range
+        chart_params: dict[str, object] = {}
+        if chart_range == "custom":
+            if chart_start:
+                chart_params["chart_start"] = chart_start.isoformat()
+            if chart_end:
+                chart_params["chart_end"] = chart_end.isoformat()
+        elif chart_range != "all":
+            chart_params["chart_range"] = chart_range
+        current_query_params.update(chart_params)
         current_query_url = url_for("application_tracker", **current_query_params)
-        clear_filters_params: dict[str, object] = {}
-        if chart_range != "all":
-            clear_filters_params["chart_range"] = chart_range
+        clear_filters_params: dict[str, object] = dict(chart_params)
         clear_filters_url = url_for("application_tracker", **clear_filters_params)
         active_filter_tokens: list[str] = []
         if source_kind == "linked":
@@ -2778,7 +2920,11 @@ def create_app() -> Flask:
             stage=stage or None,
             limit=limit,
         )
-        tracker_chart = build_application_track_chart_view(range_key=chart_range)
+        tracker_chart = build_application_track_chart_view(
+            range_key=chart_range,
+            custom_start=chart_start,
+            custom_end=chart_end,
+        )
         chart_range_urls = {
             range_key: url_for(
                 "application_tracker",
@@ -2787,7 +2933,7 @@ def create_app() -> Flask:
                         **{
                             key: value
                             for key, value in current_query_params.items()
-                            if key != "chart_range"
+                            if key not in {"chart_range", "chart_start", "chart_end"}
                         },
                         **({"chart_range": range_key} if range_key != "all" else {}),
                     }
@@ -2824,6 +2970,8 @@ def create_app() -> Flask:
             current_query_url=current_query_url,
             clear_filters_url=clear_filters_url,
             chart_range=chart_range,
+            chart_start=chart_start.isoformat() if chart_start else "",
+            chart_end=chart_end.isoformat() if chart_end else "",
             chart_range_labels=TRACKER_CHART_RANGE_LABELS,
             chart_range_urls=chart_range_urls,
             tracker_chart=tracker_chart,

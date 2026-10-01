@@ -41,11 +41,12 @@ def test_run_query_retries_on_timeout(monkeypatch) -> None:
     monkeypatch.setattr(JobSpyFetcher, "_invoke_jobspy", fake_invoke)
     monkeypatch.setattr("app.fetcher.time.sleep", lambda _seconds: None)
 
-    rows, retry_count, retry_errors = fetcher._run_query(_make_profile(), "sci ml", "Remote")
+    rows, retry_count, retry_errors, site_errors = fetcher._run_query(_make_profile(), "sci ml", "Remote")
 
     assert rows == [{"site": "linkedin", "title": "x"}]
     assert retry_count == 2
     assert len(retry_errors) == 2
+    assert site_errors == {}
 
 
 def test_run_query_does_not_retry_for_non_retryable_errors(monkeypatch) -> None:

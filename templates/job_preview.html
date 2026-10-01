@@ -18,7 +18,7 @@
           <span class="meta-pill">{{ job_country }}</span>
           <span class="meta-pill">{{ job.profile_label }}</span>
           {% if job.date_posted %}
-          <span class="meta-pill">发布 {{ job.date_posted|localtime("%Y-%m-%d") }}</span>
+          <span class="meta-pill">发布 {{ job.date_posted.strftime("%Y-%m-%d") }}</span>
           {% endif %}
         </div>
         <p class="row-subtitle job-preview-note">这个窗口会被 Jobs 和 Tailor 页的“岗位描述”按钮重复复用。</p>

@@ -58,6 +58,23 @@
         </div>
       </div>
 
+      <form method="get" action="{{ url_for('application_tracker') }}" class="tracker-date-form">
+        {% if active_source_kind %}<input type="hidden" name="source_kind" value="{{ active_source_kind }}" />{% endif %}
+        {% if active_stage %}<input type="hidden" name="stage" value="{{ active_stage }}" />{% endif %}
+        {% if active_keyword %}<input type="hidden" name="keyword" value="{{ active_keyword }}" />{% endif %}
+        {% if limit != 50 %}<input type="hidden" name="limit" value="{{ limit }}" />{% endif %}
+        <label>
+          起始日期
+          <input type="date" name="chart_start" value="{{ chart_start }}" />
+        </label>
+        <label>
+          截止日期
+          <input type="date" name="chart_end" value="{{ chart_end }}" />
+        </label>
+        <button type="submit" class="ghost-button {% if chart_range == 'custom' %}active{% endif %}">指定日期</button>
+        <span class="muted-copy">只填起始 = 从该日到今天；只填截止 = 到该日为止。</span>
+      </form>
+
       <p class="muted-copy tracker-chart-hint">默认只显示投递，点击指标可切换显示。</p>
 
       <div class="tracker-chart-totals">
@@ -202,7 +219,12 @@
     </div>
 
     <form method="get" action="{{ url_for('application_tracker') }}" class="toolbar-form compact-toolbar">
+      {% if chart_range == "custom" %}
+      {% if chart_start %}<input type="hidden" name="chart_start" value="{{ chart_start }}" />{% endif %}
+      {% if chart_end %}<input type="hidden" name="chart_end" value="{{ chart_end }}" />{% endif %}
+      {% else %}
       <input type="hidden" name="chart_range" value="{{ chart_range }}" />
+      {% endif %}
       <label>
         来源类型
         <select name="source_kind">

@@ -13,7 +13,7 @@
       <div class="meta-pills-wrap">
         <span class="meta-pill">开始 {{ run.started_at|localtime("%Y-%m-%d %H:%M:%S %Z") }}</span>
         <span class="meta-pill">结束 {{ run.finished_at|localtime("%Y-%m-%d %H:%M:%S %Z") if run.finished_at else "进行中" }}</span>
-        <span class="meta-pill">{{ "成功" if run.success else "有异常" }}</span>
+        <span class="meta-pill run-status-{{ run_view.status_key }}">{{ run_view.status_label }}</span>
       </div>
     </div>
 
@@ -83,17 +83,24 @@
           {% endif %}
         </span>
         <span>{{ query.row_count }}</span>
-        <span class="{% if query.status == 'error' %}run-warn{% elif query.status == 'ok' %}run-ok{% endif %}">
+        <span class="{% if query.status in ('error', 'skipped') %}run-warn{% elif query.status == 'partial' %}run-partial{% elif query.status == 'ok' %}run-ok{% endif %}">
           {% if query.status == "ok" %}
           成功
+          {% elif query.status == "partial" %}
+          部分站点失败
           {% elif query.status == "empty" %}
           空结果
+          {% elif query.status == "skipped" %}
+          已跳过（网络不可用）
           {% else %}
           失败
           {% endif %}
-          {% if query.error %}
+          {% if query.error and query.status != "skipped" %}
           · {{ query.error }}
           {% endif %}
+          {% for site, site_error in query.site_errors.items() %}
+          <span class="row-subtitle">{{ site|replace("_", " ")|title }}：{{ site_error }}</span>
+          {% endfor %}
         </span>
       </article>
       {% else %}

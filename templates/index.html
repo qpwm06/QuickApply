@@ -243,7 +243,7 @@
       <div class="job-cell job-meta-inline">
         <span>{{ item.job.last_seen_at|localtime("%Y-%m-%d %H:%M %Z") }}</span>
         {% if item.job.date_posted %}
-        <span class="job-subline">· 发布 {{ item.job.date_posted|localtime("%Y-%m-%d") }}</span>
+        <span class="job-subline">· 发布 {{ item.job.date_posted.strftime("%Y-%m-%d") }}</span>
         {% endif %}
       </div>
 

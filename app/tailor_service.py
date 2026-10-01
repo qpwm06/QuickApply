@@ -393,12 +393,16 @@ def _extract_publication_lines(template_text: str, *, limit: int = 6) -> list[st
     publication_lines: list[str] = []
     for raw_line in lines:
         line = raw_line.strip()
-        if not in_publication_block and "Selected Publications" in line:
+        # 中文注释：兼容旧模板的 "Selected Publications" 与 2026 新模板的 "\section*{PUBLICATIONS ...}"。
+        is_publication_heading = "Selected Publications" in line or (
+            line.startswith(r"\section*") and "publications" in line.lower()
+        )
+        if not in_publication_block and is_publication_heading:
             in_publication_block = True
             continue
         if not in_publication_block:
             continue
-        if line.startswith(r"\section*") and "Selected Publications" not in line:
+        if line.startswith(r"\section*") and not is_publication_heading:
             break
         if line.startswith(r"\subsection*"):
             break
@@ -410,11 +414,20 @@ def _extract_publication_lines(template_text: str, *, limit: int = 6) -> list[st
 
 
 def _extract_reference_status_lines(reference_text: str, *, limit: int = 8) -> list[str]:
-    status_keywords = ("accepted", "under review", "under revision", "biorxiv", "advance article")
+    status_keywords = (
+        "accepted",
+        "in press",
+        "under review",
+        "under revision",
+        "preprint",
+        "biorxiv",
+        "chemrxiv",
+        "advance article",
+    )
     lines: list[str] = []
     for raw_line in reference_text.splitlines():
         normalized = raw_line.strip()
-        if not normalized:
+        if not normalized or normalized.startswith(("#", ">")):
             continue
         lowered = normalized.lower()
         if any(keyword in lowered for keyword in status_keywords):
