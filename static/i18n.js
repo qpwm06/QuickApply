@@ -271,6 +271,108 @@
     { zh: "可留空，自动根据名称生成", en: "Optional. Auto-generate from the name if left empty." },
     { zh: "新增搜索关键词，例如 \"scientific machine learning\" molecules", en: "Add a search keyword, for example \"scientific machine learning\" molecules" },
     { zh: "删除关键词", en: "Delete keyword" },
+    // 侧栏 / Dashboard
+    { zh: "后台待命", en: "Idle" },
+    { zh: "抓取覆盖度", en: "Crawl Coverage" },
+    { zh: "看每个画像最近抓取的返回率，发现站点限流或反爬迹象", en: "Check each profile's recent crawl yield to spot rate limits or anti-bot blocking." },
+    { zh: "返回 / Requested", en: "Returned / Requested" },
+    { zh: "覆盖率", en: "Coverage" },
+    { zh: "重试", en: "Retries" },
+    // Crawler
+    { zh: "关键词规则（exclude / require / 权重）", en: "Keyword rules (exclude / require / weights)" },
+    { zh: "默认折叠，调权或加禁用关键词时再展开", en: "Collapsed by default; expand to tune weights or block keywords." },
+    { zh: "禁用关键词（exclude_keywords，每行一个）", en: "Blocked keywords (exclude_keywords, one per line)" },
+    { zh: "必含任一关键词（require_any_keywords，每行一个；留空表示不限制）", en: "Require any of (require_any_keywords, one per line; leave empty for no limit)" },
+    { zh: "每个搜索词的供给权重（0-2，默认 1.0）", en: "Supply weight per search term (0–2, default 1.0)" },
+    { zh: "保存关键词规则", en: "Save keyword rules" },
+    { zh: "起始日期", en: "Start date" },
+    { zh: "截止日期", en: "End date" },
+    { zh: "删除该日期范围的记录", en: "Delete records in this range" },
+    { zh: "成功（有警告）", en: "Success (with warnings)" },
+    { zh: "部分失败", en: "Partial failure" },
+    { zh: "抓到职位", en: "Jobs seen" },
+    { zh: "例如 \"protein modeling\" machine learning | \"computational biology\"", en: "e.g. \"protein modeling\" machine learning | \"computational biology\"" },
+    // Jobs
+    { zh: "首次抓到", en: "First seen" },
+    { zh: "日期依据", en: "Date basis" },
+    { zh: "发布日期", en: "Posted date" },
+    { zh: "日期范围含首尾两天；只填一个日期即可：只填起始 = 该日及以后，只填截止 = 该日及以前。按发布日期筛选时，没有发布日期的职位会被排除。", en: "Ranges include both ends. One date is enough: start only = that day and later, end only = that day and earlier. Filtering by posted date excludes jobs without one." },
+    { zh: "剩余", en: "Remaining" },
+    { zh: "已投递", en: "Applied" },
+    { zh: "已查阅", en: "Reviewed" },
+    { zh: "全选本页", en: "Select all on page" },
+    { zh: "将选中标记为不合适（", en: "Dismiss selected (" },
+    { zh: "）", en: ")" },
+    { zh: "先用上面的筛选缩小范围，再勾选后批量处理。", en: "Narrow the list with the filters above, then select jobs for bulk actions." },
+    { zh: "只填起始日期 = 从该日往后", en: "Start date only = from that day on" },
+    { zh: "只填截止日期 = 到该日为止（往前）", en: "End date only = up to that day" },
+    { zh: "选中该职位", en: "Select this job" },
+    // Tracker
+    { zh: "投递", en: "Applied" },
+    { zh: "当季", en: "This quarter" },
+    { zh: "近半年", en: "Last 6 months" },
+    { zh: "指定日期", en: "Apply dates" },
+    { zh: "只填起始 = 从该日到今天；只填截止 = 到该日为止。", en: "Start only = that day to today; end only = up to that day." },
+    { zh: "例如：约到 phone screen / 推荐人已介绍 / 面试失败原因", en: "e.g. phone screen booked / referrer introduced / rejection reason" },
+    // Tailor 列表 / 工作台
+    { zh: "累计运行", en: "Total runs" },
+    { zh: "最终 PDF", en: "Final PDF" },
+    { zh: "查看 Diff", en: "View Diff" },
+    { zh: "打开职位页", en: "Open job page" },
+    { zh: "← 返回 Jobs", en: "← Back to Jobs" },
+    { zh: "← 返回 Tailor", en: "← Back to Tailor" },
+    { zh: "最近几次 run", en: "Recent runs" },
+    { zh: "恢复到此版本", en: "Restore this version" },
+    { zh: "把输入、Session、建议摘要和发送区收进同一个工作台", en: "Inputs, session, advice summary, and composer in one workbench" },
+    { zh: "修改建议会回填右侧发送区，但不会自动重建现有 Session。", en: "Advice fills the composer on the right but never rebuilds the existing session." },
+    { zh: "编辑输入文件", en: "Edit input files" },
+    { zh: "role.md 与 user_notes.md 默认折叠", en: "role.md and user_notes.md are collapsed by default" },
+    { zh: "先维护输入，再用一键生成复用或建立当前 Session，并刷新修改建议。", en: "Update the inputs, then Generate to reuse or create the session and refresh the advice." },
+    { zh: "保存工作区", en: "Save workspace" },
+    { zh: "一键生成", en: "Generate" },
+    { zh: "展开 role.md 和 user_notes.md", en: "Expand role.md and user_notes.md" },
+    { zh: "默认收起，避免 Tailor 工作台被输入区撑开", en: "Collapsed by default so the inputs don't stretch the workbench" },
+    { zh: "修改建议摘要", en: "Advice summary" },
+    { zh: "重新生成时会优先读取当前 final tex；如果还没有 final tex，才回退模板副本。", en: "Regeneration reads the current final tex first and falls back to the template copy only when none exists." },
+    { zh: "基于当前 final tex", en: "Based on current final tex" },
+    { zh: "查看 skill", en: "View skill" },
+    { zh: "打开 skill 文件", en: "Open skill file" },
+    { zh: "重新生成修改建议", en: "Regenerate advice" },
+    { zh: "发送给 Session 的信息", en: "Message to session" },
+    { zh: "修改建议会把结构化 Markdown 填到这里；你可以直接改，再发送到同一个 Session。", en: "Advice fills structured Markdown here; edit it, then send it to the same session." },
+    { zh: "当前发送内容预览", en: "Message preview" },
+    { zh: "这里直接按 Markdown 渲染，方便确认标题层级和 bullet 结构。", en: "Rendered as Markdown to check heading levels and bullet structure." },
+    { zh: "所有建议生成和最终改稿都复用同一个 Session", en: "All advice and final edits reuse one session" },
+    { zh: "先确保 Session 可用，再把右侧这段 Markdown 发送进去修改最终稿。", en: "Make sure the session is ready, then send the Markdown on the right to revise the final draft." },
+    { zh: "已建立", en: "Ready" },
+    { zh: "恢复 / 重建 Session", en: "Restore / rebuild session" },
+    { zh: "建立时间", en: "Created" },
+    { zh: "当前 session 已可直接接收当前发送区内容。", en: "The session is ready to receive the current message." },
+    { zh: "打开 Finder 工作区", en: "Open workspace in Finder" },
+    { zh: "打开 Finder 文件", en: "Reveal file in Finder" },
+    { zh: "发送建议到 Session", en: "Send to session" },
+    { zh: "最近 Session 日志", en: "Recent session log" },
+    { zh: "默认折叠，只在排查卡住或 prompt 失效时再展开", en: "Collapsed by default; expand only to debug a stuck run or failed prompt" },
+    { zh: "停止当前任务", en: "Stop current task" },
+    { zh: "每轮修改后直接确认编译结果，再决定是否继续 vibe", en: "Check the compiled result after each round before the next edit" },
+    { zh: "打开 PDF", en: "Open PDF" },
+    { zh: "打开 Diff", en: "Open Diff" },
+    { zh: "缩小", en: "Zoom out" },
+    { zh: "放大", en: "Zoom in" },
+    { zh: "生成修改建议后，这里会自动填入可直接发给 Codex session 的结构化 Markdown。", en: "Once advice is generated, structured Markdown ready for the Codex session appears here." },
+    { zh: "尚未开始", en: "Not started" },
+    { zh: "暂无 session id", en: "No session id yet" },
+    { zh: "当前无 final tex，已回退模板副本", en: "No final tex yet; using the template copy" },
+    { zh: "尚未生成", en: "Not generated" },
+    { zh: "尚未建立", en: "Not created" },
+    { zh: "修改建议不会自动建 Session；需要时请手动建立，或继续复用已有 ready session。", en: "Advice never creates a session on its own; create one manually or reuse a ready session." },
+    { zh: "当前还没有可预览的 PDF。先建立 session 或手动保存一次 final tex。", en: "No PDF to preview yet. Create a session or save the final tex once." },
+    // Skill 详情
+    { zh: "渲染预览", en: "Rendered preview" },
+    { zh: "原始文本", en: "Raw text" },
+    { zh: "修改建议 Skill", en: "Revision Advice Skill" },
+    { zh: "这里按 Markdown 渲染，方便检查段落结构、限制条件和指令格式。", en: "Rendered as Markdown to check structure, constraints, and instruction format." },
+    { zh: "这里只读显示，便于对照实际文件内容。", en: "Read-only view for comparing against the actual file." },
   ];
 
   const RUNTIME_MESSAGES = {
@@ -310,6 +412,46 @@
   };
 
   const PATTERN_TRANSLATORS = [
+    {
+      re: /^(\d+) 次运行$/,
+      zh: (_, count) => `${count} 次运行`,
+      en: (_, count) => `${count} runs`,
+    },
+    {
+      re: /^(\d+)（(\d+) 次抓取）$/,
+      zh: (_, retries, runs) => `${retries}（${runs} 次抓取）`,
+      en: (_, retries, runs) => `${retries} (${runs} crawls)`,
+    },
+    {
+      re: /^最近 (\d+) 条$/,
+      zh: (_, count) => `最近 ${count} 条`,
+      en: (_, count) => `Last ${count}`,
+    },
+    {
+      re: /^部分失败 (\d+\/\d+)$/,
+      zh: (_, ratio) => `部分失败 ${ratio}`,
+      en: (_, ratio) => `Partial failure ${ratio}`,
+    },
+    {
+      re: /^共 (\d+) 条抓取记录。状态说明：.+$/,
+      zh: (text) => text,
+      en: (_, count) => `${count} crawl runs. Status: success after retries or with one failed site is "Success (with warnings)"; some failed queries is "Partial failure".`,
+    },
+    {
+      re: /^按开始时间（(.+)）计算，含首尾两天；.+$/,
+      zh: (text) => text,
+      en: (_, tz) => `Based on start time (${tz}), both ends included. Start only = that day and later; end only = that day and earlier. Deletes records only; crawled jobs are kept.`,
+    },
+    {
+      re: /^请求\s+([\s\S]+)$/,
+      zh: (_, sites) => `请求 ${sites}`,
+      en: (_, sites) => `Requested ${sites}`,
+    },
+    {
+      re: /^PDF 缩放 (\d+)%$/,
+      zh: (_, value) => `PDF 缩放 ${value}%`,
+      en: (_, value) => `PDF zoom ${value}%`,
+    },
     {
       re: /^当前时区：(.+)$/,
       zh: (_, zone) => `当前时区：${zone}`,
@@ -728,7 +870,9 @@
 
   function applyAttributeTranslations(root, language) {
     for (const element of root.querySelectorAll("[placeholder], [title], [aria-label]")) {
-      if (!(element instanceof Element) || shouldSkipElement(element)) {
+      // 中文注释：textarea 自身的 placeholder 需要翻译，只跳过 textarea 内部或其它跳过区域。
+      const skipTarget = element.tagName === "TEXTAREA" ? element.parentElement : element;
+      if (!(element instanceof Element) || (skipTarget && shouldSkipElement(skipTarget))) {
         continue;
       }
       const originalValues = originalAttributes.get(element) ?? {};
@@ -742,6 +886,35 @@
         }
       }
       originalAttributes.set(element, originalValues);
+    }
+  }
+
+  // 中文注释：兜底扫描。AUTO_TEXT_SELECTORS 之外的界面文字也按词典翻译；
+  // 只处理含中文的文本节点，切回中文时还原原文。Agent 消息等用户内容不翻译。
+  const CJK_PATTERN = /[　-〿一-鿿＀-￯]/;
+  const SWEEP_SKIP_SELECTOR = [
+    SKIP_SELECTOR,
+    "[data-language-option]",
+    ".history-line-message",
+    ".message-surface-text",
+    ".job-preview-text",
+  ].join(", ");
+
+  function applyTextNodeSweep(root, language) {
+    const scope = root === document ? document.body : root;
+    if (!scope) return;
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest(SWEEP_SKIP_SELECTOR)) continue;
+      const originalText = originalTextNodes.get(node) ?? node.textContent ?? "";
+      if (!CJK_PATTERN.test(originalText)) continue;
+      originalTextNodes.set(node, originalText);
+      const translated = language === "en" ? translateTextValue(originalText, language) : originalText;
+      if (translated !== node.textContent) {
+        node.textContent = translated;
+      }
     }
   }
 
@@ -768,6 +941,7 @@
       applyLabelTranslation(label, language);
     }
 
+    applyTextNodeSweep(root, language);
     applyAttributeTranslations(root, language);
     document.title = translateTextValue(rootMetadata.documentTitle, language);
     syncLanguageSwitch(root, language);
@@ -805,4 +979,18 @@
   });
 
   applyLanguage(document);
+
+  // 中文注释：页面轮询或局部重绘后插入的新文字，在英文模式下自动补翻。
+  let pendingSweep = false;
+  const observer = new MutationObserver(() => {
+    if (pendingSweep || getLanguage() !== "en") return;
+    pendingSweep = true;
+    requestAnimationFrame(() => {
+      pendingSweep = false;
+      applyLanguage(document);
+    });
+  });
+  if (document.body) {
+    observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+  }
 })();

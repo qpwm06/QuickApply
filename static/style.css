@@ -87,6 +87,10 @@ textarea {
   flex-direction: column;
   gap: 18px;
   height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
   padding: 22px 18px;
   border-right: 1px solid rgba(148, 163, 184, 0.16);
   background: var(--sidebar);
@@ -516,10 +520,12 @@ textarea {
 
 .page-content {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
 .content-section {
+  min-width: 0;
   scroll-margin-top: 24px;
 }
 
@@ -1131,6 +1137,23 @@ button:disabled,
 .profile-admin-row:first-child,
 .table-line:first-child {
   border-top: none;
+}
+
+.table-line:not(.table-line-stack) {
+  grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+  align-items: center;
+  gap: 14px;
+}
+
+.table-line:not(.table-line-stack) > span:first-child {
+  font-weight: 600;
+}
+
+.table-line:not(.table-line-stack) > span:not(:first-child) {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .profile-admin-row {
@@ -2742,9 +2765,11 @@ textarea[readonly] {
 
 .tailor-session-table {
   display: grid;
+  overflow-x: auto;
 }
 
 .tailor-session-grid {
+  min-width: 960px;
   grid-template-columns: minmax(240px, 1.55fr) minmax(170px, 1fr) minmax(120px, 0.75fr) minmax(170px, 0.9fr) minmax(220px, 1.1fr);
 }
 
@@ -2924,6 +2949,16 @@ textarea[readonly] {
 }
 
 @media (max-width: 720px) {
+  .table-line:not(.table-line-stack) {
+    grid-template-columns: repeat(3, auto);
+    justify-content: start;
+    gap: 6px 14px;
+  }
+
+  .table-line:not(.table-line-stack) > span:first-child {
+    grid-column: 1 / -1;
+  }
+
   .page-header,
   .section-card-header,
   .page-header-main,
