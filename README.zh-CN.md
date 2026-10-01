@@ -84,6 +84,12 @@ QuickApply 不是泛职位看板，而是面向“定向投递”的本地工作
   </tr>
 </table>
 
+## 🎨 界面风格
+
+- **研究笔记本主题**：象牙白纸面、深青墨色侧栏、刊头式页眉，配一种清透的青绿主色。主题单独写在 `static/theme.css`，叠加在 `static/style.css` 之上；删掉 `templates/base.html` 里引用它的那一行，就能回到基础样式。
+- **Computer Modern 字体**：标题和数字用 CMU Serif，正文用 CMU Bright，标签和编号用 CMU Typewriter。字体文件放在 `static/fonts/`，按 SIL Open Font License 分发（见 `static/fonts/OFL.txt`）；本机装了 CMU 字体时优先用本地的。
+- **完整中英双语**：在侧栏切换「中 / EN」。英文模式覆盖所有页面，包括页面加载后才出现的文字；Agent 生成的消息保持原文。
+
 ## ⚡ 快速启动
 
 ### 本地
@@ -140,7 +146,7 @@ data/            SQLite 数据库和生成工作区
 docs/            公开文档和截图
 examples/        synthetic resumes、项目库、reference 库、模板
 scripts/         启动脚本和 demo seed 脚本
-static/          样式、i18n 资源和公开静态文件
+static/          基础样式、主题层、CMU 字体和 i18n 资源
 templates/       Jinja 页面模板
 tests/           路由、配置、评分、Tailor 测试
 .codex/skills/   公开 Tailor skills

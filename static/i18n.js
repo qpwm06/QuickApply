@@ -309,8 +309,8 @@
     { zh: "选中该职位", en: "Select this job" },
     // Tracker
     { zh: "投递", en: "Applied" },
-    { zh: "当季", en: "This quarter" },
-    { zh: "近半年", en: "Last 6 months" },
+    { zh: "当季", en: "This Quarter" },
+    { zh: "近半年", en: "Last 6 Months" },
     { zh: "指定日期", en: "Apply dates" },
     { zh: "只填起始 = 从该日到今天；只填截止 = 到该日为止。", en: "Start only = that day to today; end only = up to that day." },
     { zh: "例如：约到 phone screen / 推荐人已介绍 / 面试失败原因", en: "e.g. phone screen booked / referrer introduced / rejection reason" },

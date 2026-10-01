@@ -85,6 +85,12 @@ The screenshots below mirror the real workflow documented in [docs/workflows.md]
   </tr>
 </table>
 
+## 🎨 Interface
+
+- **Research-notebook theme**: ivory paper, a deep teal sidebar, masthead-style page headers, and one clear teal accent. The theme lives in `static/theme.css` as a layer on top of `static/style.css`; removing its `<link>` in `templates/base.html` restores the base look.
+- **Computer Modern typography**: CMU Serif for headings and figures, CMU Bright for body text, CMU Typewriter for labels and IDs. The fonts ship in `static/fonts/` under the SIL Open Font License (`static/fonts/OFL.txt`), and a locally installed CMU family is used first.
+- **Fully bilingual UI**: switch between 中 and EN in the sidebar. English mode covers every page, including text that appears after the page loads; agent-generated messages are left as written.
+
 ## ⚡ Quick Start
 
 ### Local
@@ -141,7 +147,7 @@ data/            SQLite DB and generated workspaces
 docs/            Public docs and screenshots
 examples/        Synthetic resumes, project library, reference library, templates
 scripts/         Startup helpers and demo seeding
-static/          CSS, i18n assets, and public-facing static files
+static/          Base CSS, theme layer, CMU fonts, and i18n assets
 templates/       Jinja templates
 tests/           Route, config, scoring, and Tailor tests
 .codex/skills/   Public Tailor skills
